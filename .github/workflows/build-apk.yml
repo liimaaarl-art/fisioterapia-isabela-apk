@@ -57,6 +57,13 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      - name: Habilitar AndroidX
+        working-directory: projeto/Fisioterapia_Isabela_APK
+        run: |
+          echo "android.useAndroidX=true" >> gradle.properties
+          echo "android.enableJetifier=true" >> gradle.properties
+          cat gradle.properties
+
       - name: Gerar APK
         working-directory: projeto/Fisioterapia_Isabela_APK
         run: gradle assembleDebug --stacktrace
