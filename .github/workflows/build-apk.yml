@@ -14,43 +14,11 @@ jobs:
       - name: Baixar arquivos do repositorio
         uses: actions/checkout@v4
 
-      - name: Localizar e descompactar o projeto
-        shell: bash
+      - name: Descompactar projeto
         run: |
-          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
-
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERRO: Nenhum arquivo ZIP encontrado."
-            exit 1
-          fi
-
-          echo "Arquivo encontrado: $ZIP_FILE"
-
           mkdir -p projeto
-          unzip -q "$ZIP_FILE" -d projeto
-
-          echo "Projeto descompactado."
-
-      - name: Localizar projeto Android
-        id: android
-        shell: bash
-        run: |
-          GRADLEW=$(find projeto -type f -name "gradlew" | head -n 1)
-
-          if [ -z "$GRADLEW" ]; then
-            echo "ERRO: O arquivo gradlew nao foi encontrado."
-            echo "Conteudo do ZIP:"
-            find projeto -maxdepth 4 -type f | head -n 100
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$GRADLEW")
-
-          echo "Projeto Android encontrado em: $PROJECT_DIR"
-          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-
-          sed -i 's/\r$//' "$GRADLEW"
-          chmod +x "$GRADLEW"
+          unzip -q Fisioterapia_Isabela_APK_GitHub.zip -d projeto
+          test -f projeto/Fisioterapia_Isabela_APK/settings.gradle
 
       - name: Configurar Java
         uses: actions/setup-java@v4
@@ -58,17 +26,24 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar Android 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
 
       - name: Gerar APK
-        working-directory: ${{ steps.android.outputs.dir }}
-        run: ./gradlew assembleDebug
+        working-directory: projeto/Fisioterapia_Isabela_APK
+        run: gradle assembleDebug --stacktrace
 
       - name: Salvar APK
         uses: actions/upload-artifact@v4
         with:
           name: Fisioterapia-Isabela-APK
-          path: |
-            ${{ steps.android.outputs.dir }}/**/build/outputs/apk/debug/*.apk
+          path: projeto/Fisioterapia_Isabela_APK/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
