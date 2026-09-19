@@ -19,6 +19,7 @@ jobs:
           mkdir -p projeto
           unzip -q Fisioterapia_Isabela_APK_GitHub.zip -d projeto
           test -f projeto/Fisioterapia_Isabela_APK/settings.gradle
+          echo "Projeto encontrado com sucesso"
 
       - name: Configurar Java
         uses: actions/setup-java@v4
@@ -26,11 +27,12 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Configurar Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Instalar Android 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Preparar Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          which sdkmanager
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
