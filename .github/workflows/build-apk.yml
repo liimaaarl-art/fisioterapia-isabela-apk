@@ -1,4 +1,4 @@
-name: Gerar APK
+name: Build Isabela Martins APK
 
 on:
   workflow_dispatch:
@@ -11,66 +11,143 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar arquivos do repositorio
+      - name: Baixar projeto
         uses: actions/checkout@v4
 
-      - name: Descompactar projeto
-        run: |
-          mkdir -p projeto
-          unzip -q Fisioterapia_Isabela_APK_GitHub.zip -d projeto
-          test -f projeto/Fisioterapia_Isabela_APK/settings.gradle
-          echo "Projeto encontrado com sucesso"
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Configurar Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: 21
 
-      - name: Preparar Android SDK
-        shell: bash
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Instalar Android API
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-
-          if [ ! -x "$SDKMANAGER" ]; then
-            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)
+      - name: Preparar dependencias
+        run: |
+          if [ ! -f package.json ]; then
+            npm init -y
           fi
 
-          if [ -z "$SDKMANAGER" ]; then
-            echo "ERRO: sdkmanager nao encontrado"
+          npm install @capacitor/core@8
+          npm install @capacitor/android@8
+          npm install --save-dev @capacitor/cli@8
+          npm install --save-dev @capacitor/assets
+
+      - name: Preparar arquivos do aplicativo
+        run: |
+          mkdir -p www
+
+          if [ ! -f index.html ]; then
+            echo "ERRO: index.html nao encontrado."
             exit 1
           fi
 
-          echo "sdkmanager encontrado em: $SDKMANAGER"
+          cp index.html www/index.html
 
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          if [ -f manifest.webmanifest ]; then
+            cp manifest.webmanifest www/manifest.webmanifest
+          fi
 
-          "$SDKMANAGER" \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+          if [ -f sw.js ]; then
+            cp sw.js www/sw.js
+          fi
 
-      - name: Configurar Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
+          if [ -f icon.svg ]; then
+            cp icon.svg www/icon.svg
+          fi
 
-      - name: Habilitar AndroidX
-        working-directory: projeto/Fisioterapia_Isabela_APK
+      - name: Criar configuracao Capacitor
         run: |
-          echo "android.useAndroidX=true" >> gradle.properties
-          echo "android.enableJetifier=true" >> gradle.properties
-          cat gradle.properties
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "com.florindosistemas.isabelamartins",
+            "appName": "Isabela Martins",
+            "webDir": "www"
+          }
+          EOF
+
+      - name: Criar projeto Android
+        run: |
+          rm -rf android
+          npx cap add android
+
+      - name: Liberar microfone no Android
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("android/app/src/main/AndroidManifest.xml")
+
+          if not path.exists():
+              raise SystemExit("AndroidManifest.xml nao encontrado")
+
+          text = path.read_text(encoding="utf-8")
+
+          additions = [
+              '<uses-permission android:name="android.permission.RECORD_AUDIO" />',
+              '<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />',
+              '<uses-feature android:name="android.hardware.microphone" android:required="false" />'
+          ]
+
+          missing = [item for item in additions if item not in text]
+
+          if missing:
+              match = re.search(r'<manifest[^>]*>', text)
+
+              if not match:
+                  raise SystemExit("Tag <manifest> nao encontrada")
+
+              insert_at = match.end()
+
+              block = "\n    " + "\n    ".join(missing)
+
+              text = text[:insert_at] + block + text[insert_at:]
+
+              path.write_text(text, encoding="utf-8")
+
+          print("Permissoes de microfone configuradas.")
+          PY
+
+      - name: Gerar icone Android
+        run: |
+          if [ -f icon.png ]; then
+            mkdir -p assets
+            cp icon.png assets/icon.png
+            npx capacitor-assets generate --android
+          else
+            echo "icon.png nao encontrado. Mantendo icone padrao."
+          fi
+
+      - name: Sincronizar Capacitor
+        run: |
+          npx cap sync android
+
+      - name: Conferir permissao do microfone
+        run: |
+          grep -n "RECORD_AUDIO" android/app/src/main/AndroidManifest.xml
+          grep -n "MODIFY_AUDIO_SETTINGS" android/app/src/main/AndroidManifest.xml
 
       - name: Gerar APK
-        working-directory: projeto/Fisioterapia_Isabela_APK
-        run: gradle assembleDebug --stacktrace
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
-      - name: Salvar APK
+      - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Fisioterapia-Isabela-APK
-          path: projeto/Fisioterapia_Isabela_APK/app/build/outputs/apk/debug/app-debug.apk
+          name: Isabela-Martins-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 30
