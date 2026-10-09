@@ -2,6 +2,8 @@ name: Build Isabela Martins APK
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
     branches:
       - main
@@ -18,6 +20,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Testar fluxo de IA
+        run: node --test tests/*.test.mjs
 
       - name: Configurar Java
         uses: actions/setup-java@v4
@@ -72,7 +77,8 @@ jobs:
           {
             "appId": "com.florindosistemas.isabelamartins",
             "appName": "Isabela Martins",
-            "webDir": "www"
+            "webDir": "www",
+            "server": { "hostname": "localhost", "androidScheme": "https" }
           }
           EOF
 
@@ -95,6 +101,7 @@ jobs:
           text = path.read_text(encoding="utf-8")
 
           additions = [
+              '<uses-permission android:name="android.permission.INTERNET" />',
               '<uses-permission android:name="android.permission.RECORD_AUDIO" />',
               '<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />',
               '<uses-feature android:name="android.hardware.microphone" android:required="false" />'
@@ -133,8 +140,9 @@ jobs:
         run: |
           npx cap sync android
 
-      - name: Conferir permissao do microfone
+      - name: Conferir permissoes Android
         run: |
+          grep -n "android.permission.INTERNET" android/app/src/main/AndroidManifest.xml
           grep -n "RECORD_AUDIO" android/app/src/main/AndroidManifest.xml
           grep -n "MODIFY_AUDIO_SETTINGS" android/app/src/main/AndroidManifest.xml
 

@@ -1,0 +1,5 @@
+project_id = "fisioterapia-isabela-apk"
+
+[functions.isabela-ai]
+# Keep gateway JWT verification and also validate the user with Auth in the handler.
+verify_jwt = true
