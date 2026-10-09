@@ -59,6 +59,28 @@ jobs:
 
           cp index.html www/index.html
 
+          # No APK mobile, desce somente o botao hamburguer ~10% da barra superior
+          # para afastar a area de toque da borda/status bar do Android.
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("www/index.html")
+          text = path.read_text(encoding="utf-8")
+          pattern = r'(\.im-mobile-header button\{[^}]*)(\})'
+
+          if not re.search(pattern, text):
+              raise SystemExit("Regra .im-mobile-header button nao encontrada")
+
+          text = re.sub(pattern, r'\1;transform:translateY(6px)\2', text, count=1)
+          path.write_text(text, encoding="utf-8")
+
+          if 'transform:translateY(6px)' not in text:
+              raise SystemExit("Ajuste do botao do menu nao foi aplicado")
+
+          print("Botao do menu mobile deslocado 6px para baixo.")
+          PY
+
           if [ -f manifest.webmanifest ]; then
             cp manifest.webmanifest www/manifest.webmanifest
           fi
