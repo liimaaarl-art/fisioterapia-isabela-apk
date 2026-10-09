@@ -59,26 +59,50 @@ jobs:
 
           cp index.html www/index.html
 
-          # No APK mobile, desce somente o botao hamburguer ~10% da barra superior
-          # para afastar a area de toque da borda/status bar do Android.
+          # No APK Android, reserva uma faixa segura abaixo da barra de status.
+          # Move o cabecalho mobile inteiro para baixo e ajusta o conteudo da pagina.
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           path = Path("www/index.html")
           text = path.read_text(encoding="utf-8")
-          pattern = r'(\.im-mobile-header button\{[^}]*)(\})'
+          marker = "android-statusbar-safe-header-v2"
 
-          if not re.search(pattern, text):
-              raise SystemExit("Regra .im-mobile-header button nao encontrada")
+          if marker in text:
+              raise SystemExit("Ajuste da barra de status ja existe no HTML gerado")
 
-          text = re.sub(pattern, r'\1;transform:translateY(6px)\2', text, count=1)
+          if "</head>" not in text:
+              raise SystemExit("Tag </head> nao encontrada")
+
+          override = '''
+          <style id="android-statusbar-safe-header-v2">
+          @media(max-width:760px){
+            .im-mobile-header{
+              top:32px!important;
+              height:64px!important;
+            }
+            .im-mobile-header button{
+              transform:none!important;
+            }
+            .main,html.im-light .main{
+              padding-top:112px!important;
+            }
+          }
+          </style>
+          '''
+
+          text = text.replace("</head>", override + "\n</head>", 1)
           path.write_text(text, encoding="utf-8")
 
-          if 'transform:translateY(6px)' not in text:
-              raise SystemExit("Ajuste do botao do menu nao foi aplicado")
+          checks = [
+              'id="android-statusbar-safe-header-v2"',
+              'top:32px!important',
+              'padding-top:112px!important',
+          ]
+          if not all(item in text for item in checks):
+              raise SystemExit("Ajuste seguro do cabecalho mobile nao foi aplicado")
 
-          print("Botao do menu mobile deslocado 6px para baixo.")
+          print("Cabecalho mobile afastado 32px da barra de status Android.")
           PY
 
           if [ -f manifest.webmanifest ]; then
