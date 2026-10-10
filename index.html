@@ -1098,14 +1098,36 @@ async function describeAIError(error){
     try{const json=JSON.parse(raw);detail=json.error?.message||json.error||json.message||raw}catch{detail=raw}
   }catch{}
   if(typeof detail!=='string')detail=JSON.stringify(detail);
-  const hints={401:'A função recusou a autenticação. Verifique a sessão e a validação de JWT no Supabase.',403:'A função recusou o acesso. Confira as permissões e os logs.',404:'Confira se a função isabela-ai foi publicada neste projeto.',413:'O servidor recusou o tamanho do áudio.',429:'O serviço atingiu um limite de uso. Tente novamente mais tarde.',500:'A função falhou no servidor. Consulte os logs de isabela-ai.',502:'A função ou o serviço de IA está indisponível.',503:'O serviço está indisponível. Consulte os logs.'};
-  const hint=code?hints[code]||'Consulte os logs da função no Supabase.':'Não foi possível obter resposta da função. Verifique a conexão, CORS e se a função está publicada.';
+  const hints={401:'A função recusou a autenticação. Verifique a sessão e a validação de JWT no Supabase.',403:'A função recusou o acesso. Confira as permissões e os logs.',404:'A função isabela-ai não foi encontrada no projeto xawlsjjezqaawcpvyccx. Publique a função antes de tentar novamente.',413:'O servidor recusou o tamanho do áudio.',429:'O serviço atingiu um limite de uso. Tente novamente mais tarde.',500:'A função falhou no servidor. Consulte os logs de isabela-ai.',502:'A função ou o serviço de IA está indisponível.',503:'O serviço está indisponível. Confira os secrets da função.',504:'A transcrição demorou demais. Tente um áudio menor.'};
+  const hint=code?hints[code]||'Consulte os logs da função no Supabase.':'Não foi possível obter resposta da função. Verifique a conexão e a publicação de isabela-ai no projeto xawlsjjezqaawcpvyccx. Uma função ausente ou sem resposta OPTIONS/CORS também causa este erro no APK.';
   return (code?'HTTP '+code+' — ':'')+(detail||error.message||'Falha na função isabela-ai.')+' '+hint;
 }
 
+async function requestIsabelaAI(body){
+  const {data:auth,error:authError}=await sb.auth.getSession();
+  if(authError||!auth?.session?.access_token)throw new Error('Entre novamente no aplicativo antes de usar a IA.');
+  const {data,error}=await sb.functions.invoke('isabela-ai',{body,headers:{Authorization:'Bearer '+auth.session.access_token}});
+  if(error)throw new Error(await describeAIError(error));
+  if(data?.error)throw new Error(typeof data.error==='string'?data.error:'A função retornou um erro.');
+  return data;
+}
+let audioTranscriptionBusy=false;
+async function requestAudioTranscript(blob){
+  if(audioTranscriptionBusy)throw new Error('Já existe um áudio sendo enviado. Aguarde a conclusão.');
+  if(!blob?.size)throw new Error('O áudio está vazio. Grave novamente.');
+  if(blob.size>5*1024*1024)throw new Error('O áudio deve ter até 5 MB. Grave um trecho menor.');
+  audioTranscriptionBusy=true;
+  try{
+    const extensions={webm:'audio/webm',ogg:'audio/ogg',mp3:'audio/mpeg',m4a:'audio/mp4',mp4:'audio/mp4',wav:'audio/wav',aac:'audio/aac',flac:'audio/flac','3gp':'audio/3gpp'};
+    const mimeType=blob.type||extensions[String(blob.name||'').split('.').pop().toLowerCase()]||'audio/webm';
+    const audioBase64=await blobBase64Raw(blob);
+    const data=await requestIsabelaAI({mode:'transcribe',audioBase64,mimeType});
+    if(typeof data?.text!=='string'||!data.text.trim())throw new Error('A transcrição voltou vazia.');
+    return data.text.trim();
+  }finally{audioTranscriptionBusy=false}
+}
 async function invokeIsabelaAI(mode,question,context){
-  let {data,error}=await sb.functions.invoke('isabela-ai',{body:{mode,question,context}});
-  if(error)throw new Error(await describeAIError(error)); 
+  let data=await requestIsabelaAI({mode,question,context});
   if(!data?.text)throw new Error(data?.error||'O Cloudflare Workers AI não retornou texto.');return data.text
 }
 async function patientAIAction(id,mode){
@@ -1207,10 +1229,7 @@ async function sendEvolutionRecordingToAI(){
   if(evolutionRecordedBlob.size>5*1024*1024)return setEvolutionAudioStatus('O áudio deve ter até 5 MB. Grave um trecho menor.','error');
   setEvolutionAudioStatus('Enviando áudio para a IA transcrever…','sending');
   try{
-    let audioBase64=await blobBase64Raw(evolutionRecordedBlob),mimeType=evolutionRecordedBlob.type||'audio/webm';
-    let {data,error}=await sb.functions.invoke('isabela-ai',{body:{mode:'transcribe',audioBase64,mimeType}});
-    if(error)throw new Error(await describeAIError(error));
-    let result=String(data?.text||'').trim();if(!result)throw new Error(data?.error||'A transcrição voltou vazia.');
+    let result=await requestAudioTranscript(evolutionRecordedBlob);
     applyAudioTranscript('evolution','deAIRaw',result);evolutionRecordedBlob=null;updateEvolutionAudioButtons();setEvolutionAudioStatus('✓ A IA transcreveu o áudio. Agora você pode pedir uma resposta, preencher os campos ou ouvir o texto.','ready')
   }catch(e){console.error(e);setEvolutionAudioStatus('Não foi possível enviar para a IA: '+(e.message||'erro desconhecido'),'error')}
 }
@@ -1368,10 +1387,7 @@ async function transcribeReportAudio(blob){
   if(!blob)return;if(blob.size>5*1024*1024){setReportAudioStatus('O áudio deve ter até 5 MB. Grave um trecho menor.','error');return}
   setReportAudioStatus('Enviando áudio para a IA transcrever…','sending');
   try{
-    let audioBase64=await blobBase64Raw(blob),mimeType=blob.type||'audio/webm';
-    let {data,error}=await sb.functions.invoke('isabela-ai',{body:{mode:'transcribe',audioBase64,mimeType}});
-    if(error)throw new Error(await describeAIError(error));
-    let result=String(data?.text||'').trim();if(!result)throw new Error(data?.error||'A transcrição voltou vazia.');
+    let result=await requestAudioTranscript(blob);
     applyAudioTranscript('report','eText',result);eText.focus();setReportAudioStatus('✓ Texto recebido da IA e adicionado ao relatório. Você pode revisar ou ouvir em voz alta.','ready');return true
   }catch(e){console.error(e);setReportAudioStatus('Não foi possível transcrever: '+(e.message||'erro desconhecido'),'error')}
 }
