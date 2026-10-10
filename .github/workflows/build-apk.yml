@@ -43,7 +43,7 @@ jobs:
           npm install --save-dev @capacitor/cli@8
           npm install --save-dev @capacitor/assets
 
-      - name: Preparar arquivos do aplicativo
+      - name: Preparar arquivos do aplicativo v24
         run: |
           mkdir -p www
 
@@ -52,7 +52,34 @@ jobs:
             exit 1
           fi
 
+          if [ ! -f isabela_v24_functional.js ]; then
+            echo "ERRO: modulo v24 nao encontrado."
+            exit 1
+          fi
+
           cp index.html www/index.html
+          cp isabela_v24_functional.js www/isabela_v24_functional.js
+          node --check www/isabela_v24_functional.js
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("www/index.html")
+          text = path.read_text(encoding="utf-8")
+          tag = '<script src="isabela_v24_functional.js"></script>'
+
+          if tag not in text:
+              if '</body>' not in text:
+                  raise SystemExit("Tag </body> nao encontrada no index.html")
+              text = text.replace('</body>', tag + '\n</body>')
+
+          text = text.replace(
+              'Isabela Martins • v23 TESTE • Avaliação completa e Agenda',
+              'Isabela Martins • v24 • Avaliações funcionais e relatórios'
+          )
+          path.write_text(text, encoding="utf-8")
+          print("Modulo v24 injetado no aplicativo.")
+          PY
 
           if [ -f manifest.webmanifest ]; then
             cp manifest.webmanifest www/manifest.webmanifest
@@ -109,11 +136,8 @@ jobs:
                   raise SystemExit("Tag <manifest> nao encontrada")
 
               insert_at = match.end()
-
               block = "\n    " + "\n    ".join(missing)
-
               text = text[:insert_at] + block + text[insert_at:]
-
               path.write_text(text, encoding="utf-8")
 
           print("Permissoes de microfone configuradas.")
@@ -147,7 +171,7 @@ jobs:
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Isabela-Martins-APK
+          name: Isabela-Martins-v24-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
