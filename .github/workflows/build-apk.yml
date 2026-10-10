@@ -34,28 +34,17 @@ jobs:
 
       - name: Preparar dependencias
         run: |
-          if [ ! -f package.json ]; then
-            npm init -y
-          fi
+          if [ ! -f package.json ]; then npm init -y; fi
+          npm install @capacitor/core@8 @capacitor/android@8
+          npm install --save-dev @capacitor/cli@8 @capacitor/assets
 
-          npm install @capacitor/core@8
-          npm install @capacitor/android@8
-          npm install --save-dev @capacitor/cli@8
-          npm install --save-dev @capacitor/assets
-
-      - name: Preparar arquivos do aplicativo v24
+      - name: Preparar aplicativo v25 e nova identidade visual
         run: |
           mkdir -p www
-
-          if [ ! -f index.html ]; then
-            echo "ERRO: index.html nao encontrado."
-            exit 1
-          fi
-
-          if [ ! -f isabela_v24_functional.js ]; then
-            echo "ERRO: modulo v24 nao encontrado."
-            exit 1
-          fi
+          test -f index.html || { echo "ERRO: index.html nao encontrado"; exit 1; }
+          test -f isabela_v24_functional.js || { echo "ERRO: modulo funcional nao encontrado"; exit 1; }
+          test -f brand_menu.b64 || { echo "ERRO: logo horizontal nao encontrada"; exit 1; }
+          test -f icon_v25.b64 || { echo "ERRO: icone IM nao encontrado"; exit 1; }
 
           cp index.html www/index.html
           cp isabela_v24_functional.js www/isabela_v24_functional.js
@@ -63,35 +52,52 @@ jobs:
 
           python3 - <<'PY'
           from pathlib import Path
+          import re, base64
 
-          path = Path("www/index.html")
-          text = path.read_text(encoding="utf-8")
+          p = Path('www/index.html')
+          text = p.read_text(encoding='utf-8')
           tag = '<script src="isabela_v24_functional.js"></script>'
-
           if tag not in text:
-              if '</body>' not in text:
-                  raise SystemExit("Tag </body> nao encontrada no index.html")
               text = text.replace('</body>', tag + '\n</body>')
 
-          text = text.replace(
-              'Isabela Martins • v23 TESTE • Avaliação completa e Agenda',
-              'Isabela Martins • v24 • Avaliações funcionais e relatórios'
-          )
-          path.write_text(text, encoding="utf-8")
-          print("Modulo v24 injetado no aplicativo.")
+          text = text.replace('Isabela Martins • v23 TESTE • Avaliação completa e Agenda', 'Isabela Martins • v25 • Avaliações funcionais e relatórios')
+          text = text.replace('Isabela Martins • v24 • Avaliações funcionais e relatórios', 'Isabela Martins • v25 • Avaliações funcionais e relatórios')
+
+          brand = Path('brand_menu.b64').read_text().strip()
+          icon = Path('icon_v25.b64').read_text().strip()
+          base64.b64decode(brand, validate=True)
+          base64.b64decode(icon, validate=True)
+          brand_uri = 'data:image/jpeg;base64,' + brand
+          icon_uri = 'data:image/png;base64,' + icon
+
+          pattern = r"const BRAND_IMG='data:image/jpeg;base64,[^']*';"
+          repl = "const BRAND_IMG='" + brand_uri + "';\nconst BRAND_ICON='" + icon_uri + "';"
+          text, n = re.subn(pattern, repl, text, count=1)
+          if n != 1:
+              raise SystemExit('BRAND_IMG nao localizado no HTML')
+
+          old = "function hydrateBrand(){document.querySelectorAll('[data-brand]').forEach(i=>i.src=BRAND_IMG)}"
+          new = "function hydrateBrand(){document.querySelectorAll('.brand img[data-brand],.auth-brand img[data-brand]').forEach(i=>i.src=BRAND_IMG);document.querySelectorAll('.side-profile img[data-brand]').forEach(i=>i.src=BRAND_ICON)}"
+          if old not in text:
+              raise SystemExit('hydrateBrand nao localizado no HTML')
+          text = text.replace(old, new, 1)
+
+          css = '''\n/* Identidade visual Isabela Martins • v25 */
+.brand{display:block!important;padding:5px 4px 18px!important;margin-bottom:7px!important;text-align:center!important}
+.brand img[data-brand]{display:block!important;width:100%!important;height:auto!important;max-height:none!important;object-fit:contain!important;object-position:center!important;border:0!important;border-radius:12px!important;box-shadow:0 8px 22px rgba(28,62,64,.13)!important;background:#1c3e40!important}
+.brand>div{display:none!important}
+.auth-brand{display:block!important;text-align:center!important;margin-bottom:24px!important}
+.auth-brand img[data-brand]{display:block!important;width:min(100%,340px)!important;height:auto!important;margin:0 auto!important;object-fit:contain!important;border:0!important;border-radius:14px!important;box-shadow:0 10px 28px rgba(28,62,64,.16)!important;background:#1c3e40!important}
+.auth-brand>div{display:none!important}
+.side-profile img[data-brand]{width:40px!important;height:40px!important;object-fit:cover!important;border-radius:50%!important;border:1px solid #d6bd78!important;background:#1c3e40!important}
+@media(max-width:900px){.brand{padding:5px 3px 16px!important}.brand img[data-brand]{width:100%!important;height:auto!important}}
+'''
+          if 'Identidade visual Isabela Martins • v25' not in text:
+              text = text.replace('</style>', css + '\n</style>', 1)
+
+          p.write_text(text, encoding='utf-8')
+          print('Branding v25 aplicado ao login, menu e perfil.')
           PY
-
-          if [ -f manifest.webmanifest ]; then
-            cp manifest.webmanifest www/manifest.webmanifest
-          fi
-
-          if [ -f sw.js ]; then
-            cp sw.js www/sw.js
-          fi
-
-          if [ -f icon.svg ]; then
-            cp icon.svg www/icon.svg
-          fi
 
       - name: Criar configuracao Capacitor
         run: |
@@ -113,54 +119,30 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
-
-          path = Path("android/app/src/main/AndroidManifest.xml")
-
-          if not path.exists():
-              raise SystemExit("AndroidManifest.xml nao encontrado")
-
-          text = path.read_text(encoding="utf-8")
-
-          additions = [
-              '<uses-permission android:name="android.permission.RECORD_AUDIO" />',
-              '<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />',
-              '<uses-feature android:name="android.hardware.microphone" android:required="false" />'
+          p=Path('android/app/src/main/AndroidManifest.xml')
+          text=p.read_text(encoding='utf-8')
+          additions=[
+            '<uses-permission android:name="android.permission.RECORD_AUDIO" />',
+            '<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />',
+            '<uses-feature android:name="android.hardware.microphone" android:required="false" />'
           ]
-
-          missing = [item for item in additions if item not in text]
-
+          missing=[x for x in additions if x not in text]
           if missing:
-              match = re.search(r'<manifest[^>]*>', text)
-
-              if not match:
-                  raise SystemExit("Tag <manifest> nao encontrada")
-
-              insert_at = match.end()
-              block = "\n    " + "\n    ".join(missing)
-              text = text[:insert_at] + block + text[insert_at:]
-              path.write_text(text, encoding="utf-8")
-
-          print("Permissoes de microfone configuradas.")
+              m=re.search(r'<manifest[^>]*>', text)
+              if not m: raise SystemExit('Tag manifest nao encontrada')
+              text=text[:m.end()]+'\n    '+'\n    '.join(missing)+text[m.end():]
+              p.write_text(text,encoding='utf-8')
           PY
 
-      - name: Gerar icone Android
+      - name: Gerar novo icone IM
         run: |
-          if [ -f icon.png ]; then
-            mkdir -p assets
-            cp icon.png assets/icon.png
-            npx capacitor-assets generate --android
-          else
-            echo "icon.png nao encontrado. Mantendo icone padrao."
-          fi
+          mkdir -p assets
+          base64 -d icon_v25.b64 > assets/icon.png
+          file assets/icon.png
+          npx capacitor-assets generate --android
 
       - name: Sincronizar Capacitor
-        run: |
-          npx cap sync android
-
-      - name: Conferir permissao do microfone
-        run: |
-          grep -n "RECORD_AUDIO" android/app/src/main/AndroidManifest.xml
-          grep -n "MODIFY_AUDIO_SETTINGS" android/app/src/main/AndroidManifest.xml
+        run: npx cap sync android
 
       - name: Gerar APK
         run: |
@@ -171,7 +153,7 @@ jobs:
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Isabela-Martins-v24-APK
+          name: Isabela-Martins-v25-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
