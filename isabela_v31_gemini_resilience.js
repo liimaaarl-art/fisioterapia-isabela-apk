@@ -35,12 +35,11 @@
     return original||'Não foi possível comunicar com o Gemini. Tente novamente.';
   }
 
-  // Todas as rotas antigas (Assistente IA, relatórios e transcrição) passam a usar este tradutor de erros.
   window.describeAIError=describeGeminiError;
 
   async function invokeGemini(mode,question,context){
-    if(!window.sb?.functions?.invoke) throw new Error('Serviço do Gemini não disponível neste aparelho.');
-    const {data,error}=await window.sb.functions.invoke('isabela-ai',{body:{mode,question,context}});
+    if(typeof sb==='undefined'||!sb?.functions?.invoke) throw new Error('Serviço do Gemini não disponível neste aparelho.');
+    const {data,error}=await sb.functions.invoke('isabela-ai',{body:{mode,question,context}});
     if(error) throw new Error(await describeGeminiError(error));
     if(!data?.text) throw new Error(data?.error||'O Gemini não retornou conteúdo.');
     return data.text;
@@ -130,7 +129,6 @@
   }
   window.fillEvolutionWithGemini=fillEvolutionWithGeminiV31;
 
-  // Corrige textos antigos que ainda possam aparecer na interface.
   function renameLegacyProvider(root=document){
     const walker=document.createTreeWalker(root.body||root,NodeFilter.SHOW_TEXT);
     const nodes=[];
