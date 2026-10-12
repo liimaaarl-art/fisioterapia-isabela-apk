@@ -37,25 +37,21 @@ jobs:
           npm install @capacitor/core@8 @capacitor/android@8
           npm install --save-dev @capacitor/cli@8 @capacitor/assets
 
-      - name: Preparar aplicativo v29 e identidade visual
+      - name: Preparar aplicativo v30 Gemini completo
         run: |
           mkdir -p www
-          test -f index.html || exit 1
-          test -f isabela_v24_functional.js || exit 1
-          test -f isabela_v26_premium.js || exit 1
-          test -f isabela_v27_agenda.js || exit 1
-          test -f isabela_v29_ai_evolution.js || exit 1
-          test -f brand_menu.b64 || exit 1
-          test -f icon_v25.b64 || exit 1
+          for f in index.html isabela_v24_functional.js isabela_v26_premium.js isabela_v27_agenda.js isabela_v29_ai_evolution.js isabela_v30_gemini_only.js brand_menu.b64 icon_v25.b64; do test -f "$f" || exit 1; done
           cp index.html www/index.html
-          cp isabela_v24_functional.js www/isabela_v24_functional.js
-          cp isabela_v26_premium.js www/isabela_v26_premium.js
-          cp isabela_v27_agenda.js www/isabela_v27_agenda.js
-          cp isabela_v29_ai_evolution.js www/isabela_v29_ai_evolution.js
+          cp isabela_v24_functional.js www/
+          cp isabela_v26_premium.js www/
+          cp isabela_v27_agenda.js www/
+          cp isabela_v29_ai_evolution.js www/
+          cp isabela_v30_gemini_only.js www/
           node --check www/isabela_v24_functional.js
           node --check www/isabela_v26_premium.js
           node --check www/isabela_v27_agenda.js
           node --check www/isabela_v29_ai_evolution.js
+          node --check www/isabela_v30_gemini_only.js
           python3 - <<'PY'
           from pathlib import Path
           import re, base64
@@ -65,38 +61,36 @@ jobs:
               '<script src="isabela_v24_functional.js"></script>',
               '<script src="isabela_v26_premium.js"></script>',
               '<script src="isabela_v27_agenda.js"></script>',
-              '<script src="isabela_v29_ai_evolution.js"></script>'
+              '<script src="isabela_v29_ai_evolution.js"></script>',
+              '<script src="isabela_v30_gemini_only.js"></script>'
           ]
-          if '</body>' not in text:
-              raise SystemExit('body nao encontrado')
+          if '</body>' not in text: raise SystemExit('body nao encontrado')
           for tag in tags:
-              if tag not in text:
-                  text=text.replace('</body>',tag+'\n</body>')
+              if tag not in text: text=text.replace('</body>',tag+'\n</body>')
+          text=text.replace('Cloudflare Workers AI','Gemini').replace('Cloudflare','Gemini')
           for old in [
               'Isabela Martins • v23 TESTE • Avaliação completa e Agenda',
               'Isabela Martins • v24 • Avaliações funcionais e relatórios',
               'Isabela Martins • v25 • Avaliações funcionais e relatórios',
               'Isabela Martins • v26 • Avaliação Clínica Premium',
               'Isabela Martins • v27 • Agenda Informativa + Avaliação Clínica Premium',
-              'Isabela Martins • v28 • Gemini + Agenda Informativa + Avaliação Clínica Premium'
+              'Isabela Martins • v28 • Gemini + Agenda Informativa + Avaliação Clínica Premium',
+              'Isabela Martins • v29 • Gemini Evolução Inteligente + Agenda Informativa'
           ]:
-              text=text.replace(old,'Isabela Martins • v29 • Gemini Evolução Inteligente + Agenda Informativa')
+              text=text.replace(old,'Isabela Martins • v30 • Gemini Completo + Evolução Inteligente + Agenda Informativa')
           brand=Path('brand_menu.b64').read_text().strip()
           icon=Path('icon_v25.b64').read_text().strip()
-          base64.b64decode(brand,validate=True)
-          base64.b64decode(icon,validate=True)
+          base64.b64decode(brand,validate=True); base64.b64decode(icon,validate=True)
           repl="const BRAND_IMG='data:image/jpeg;base64,"+brand+"';\nconst BRAND_ICON='data:image/png;base64,"+icon+"';"
           text,n=re.subn(r"const BRAND_IMG='data:image/jpeg;base64,[^']*';",repl,text,count=1)
           if n!=1: raise SystemExit('BRAND_IMG nao localizado')
           old="function hydrateBrand(){document.querySelectorAll('[data-brand]').forEach(i=>i.src=BRAND_IMG)}"
           new="function hydrateBrand(){document.querySelectorAll('.brand img[data-brand],.auth-brand img[data-brand]').forEach(i=>i.src=BRAND_IMG);document.querySelectorAll('.side-profile img[data-brand]').forEach(i=>i.src=BRAND_ICON)}"
-          if old in text:
-              text=text.replace(old,new,1)
-          css="\n/* Identidade visual Isabela Martins v29 */\n.brand{display:block!important;padding:5px 4px 18px!important;margin-bottom:7px!important;text-align:center!important}\n.brand img[data-brand]{display:block!important;width:100%!important;height:auto!important;max-height:none!important;object-fit:contain!important;object-position:center!important;border:0!important;border-radius:12px!important;box-shadow:0 8px 22px rgba(28,62,64,.13)!important;background:#1c3e40!important}\n.brand>div{display:none!important}\n.auth-brand{display:block!important;text-align:center!important;margin-bottom:24px!important}\n.auth-brand img[data-brand]{display:block!important;width:min(100%,340px)!important;height:auto!important;margin:0 auto!important;object-fit:contain!important;border:0!important;border-radius:14px!important;box-shadow:0 10px 28px rgba(28,62,64,.16)!important;background:#1c3e40!important}\n.auth-brand>div{display:none!important}\n.side-profile img[data-brand]{width:40px!important;height:40px!important;object-fit:cover!important;border-radius:50%!important;border:1px solid #d6bd78!important;background:#1c3e40!important}\n@media(max-width:900px){.brand{padding:5px 3px 16px!important}.brand img[data-brand]{width:100%!important;height:auto!important}}\n"
-          if 'Identidade visual Isabela Martins v29' not in text:
-              text=text.replace('</style>',css+'\n</style>',1)
+          if old in text: text=text.replace(old,new,1)
+          css="\n/* Identidade visual Isabela Martins v30 */\n.brand{display:block!important;padding:5px 4px 18px!important;margin-bottom:7px!important;text-align:center!important}\n.brand img[data-brand]{display:block!important;width:100%!important;height:auto!important;max-height:none!important;object-fit:contain!important;object-position:center!important;border:0!important;border-radius:12px!important;box-shadow:0 8px 22px rgba(28,62,64,.13)!important;background:#1c3e40!important}\n.brand>div{display:none!important}\n.auth-brand{display:block!important;text-align:center!important;margin-bottom:24px!important}\n.auth-brand img[data-brand]{display:block!important;width:min(100%,340px)!important;height:auto!important;margin:0 auto!important;object-fit:contain!important;border:0!important;border-radius:14px!important;box-shadow:0 10px 28px rgba(28,62,64,.16)!important;background:#1c3e40!important}\n.auth-brand>div{display:none!important}\n.side-profile img[data-brand]{width:40px!important;height:40px!important;object-fit:cover!important;border-radius:50%!important;border:1px solid #d6bd78!important;background:#1c3e40!important}\n@media(max-width:900px){.brand{padding:5px 3px 16px!important}.brand img[data-brand]{width:100%!important;height:auto!important}}\n"
+          text=text.replace('</style>',css+'\n</style>',1)
           p.write_text(text,encoding='utf-8')
-          print('v29 Gemini Evolucao Inteligente preparado.')
+          print('v30 Gemini completo preparado.')
           PY
 
       - name: Criar configuracao Capacitor
@@ -149,7 +143,7 @@ jobs:
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Isabela-Martins-v29-Gemini-Evolucao-Inteligente
+          name: Isabela-Martins-v30-Gemini-Completo
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
