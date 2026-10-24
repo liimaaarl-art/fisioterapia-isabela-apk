@@ -2,6 +2,8 @@ name: Build Isabela Martins APK
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
     branches:
       - main
@@ -37,10 +39,10 @@ jobs:
           npm install @capacitor/core@8 @capacitor/android@8 @capacitor/local-notifications@8
           npm install --save-dev @capacitor/cli@8 @capacitor/assets
 
-      - name: Preparar aplicativo v33 com lembretes
+      - name: Preparar aplicativo v34 com áudio automático
         run: |
           mkdir -p www
-          for f in index.html isabela_v24_functional.js isabela_v26_premium.js isabela_v27_agenda.js isabela_v29_ai_evolution.js isabela_v30_gemini_only.js isabela_v31_gemini_resilience.js isabela_v33_appointment_reminders.js brand_menu.b64 icon_v25.b64; do test -f "$f" || exit 1; done
+          for f in index.html isabela_v24_functional.js isabela_v26_premium.js isabela_v27_agenda.js isabela_v29_ai_evolution.js isabela_v30_gemini_only.js isabela_v31_gemini_resilience.js isabela_v33_appointment_reminders.js isabela_v34_audio.js brand_menu.b64 icon_v25.b64; do test -f "$f" || exit 1; done
           cp index.html www/index.html
           cp isabela_v24_functional.js www/
           cp isabela_v26_premium.js www/
@@ -49,6 +51,7 @@ jobs:
           cp isabela_v30_gemini_only.js www/
           cp isabela_v31_gemini_resilience.js www/
           cp isabela_v33_appointment_reminders.js www/
+          cp isabela_v34_audio.js www/
           node --check www/isabela_v24_functional.js
           node --check www/isabela_v26_premium.js
           node --check www/isabela_v27_agenda.js
@@ -56,6 +59,8 @@ jobs:
           node --check www/isabela_v30_gemini_only.js
           node --check www/isabela_v31_gemini_resilience.js
           node --check www/isabela_v33_appointment_reminders.js
+          node --check www/isabela_v34_audio.js
+          node --test tests/audio.test.cjs tests/edge.test.cjs
           python3 - <<'PY'
           from pathlib import Path
           import re, base64
@@ -68,7 +73,8 @@ jobs:
               '<script src="isabela_v29_ai_evolution.js"></script>',
               '<script src="isabela_v30_gemini_only.js"></script>',
               '<script src="isabela_v31_gemini_resilience.js"></script>',
-              '<script src="isabela_v33_appointment_reminders.js"></script>'
+              '<script src="isabela_v33_appointment_reminders.js"></script>',
+              '<script src="isabela_v34_audio.js"></script>'
           ]
           if '</body>' not in text: raise SystemExit('body nao encontrado')
           for tag in tags:
@@ -87,6 +93,7 @@ jobs:
               'Isabela Martins • v32 • Gemini Corrigido + Evolução Inteligente + Agenda Informativa'
           ]:
               text=text.replace(old,'Isabela Martins • v33 • Lembretes 10 min + Gemini + Agenda Informativa')
+          text=text.replace('Isabela Martins • v33 • Lembretes 10 min + Gemini + Agenda Informativa','Isabela Martins • v34 • Áudio automático + Salvamento confirmado')
           brand=Path('brand_menu.b64').read_text().strip()
           icon=Path('icon_v25.b64').read_text().strip()
           base64.b64decode(brand,validate=True); base64.b64decode(icon,validate=True)
@@ -101,6 +108,21 @@ jobs:
           p.write_text(text,encoding='utf-8')
           print('v33 com lembretes preparada.')
           PY
+
+      - name: Validar fluxo completo no navegador móvel
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: |
+          npm install --no-save playwright-core@1.62.1
+          node tests/browser.cjs
+
+      - name: Guardar evidência visual
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Isabela-v34-QA
+          path: tests/isabela-v34-mobile.png
+          if-no-files-found: ignore
 
       - name: Criar configuracao Capacitor
         run: |
@@ -184,7 +206,7 @@ jobs:
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Isabela-Martins-v33-Lembretes-10min
+          name: Isabela-Martins-v34-Audio-Automatico
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
