@@ -60,7 +60,7 @@ jobs:
           node --check www/isabela_v31_gemini_resilience.js
           node --check www/isabela_v33_appointment_reminders.js
           node --check www/isabela_v34_audio.js
-          node --test tests/audio.test.cjs tests/edge.test.cjs
+          node --test tests/audio.test.cjs tests/edge.test.cjs tests/cloud-safety.test.cjs
           python3 - <<'PY'
           from pathlib import Path
           import re, base64
