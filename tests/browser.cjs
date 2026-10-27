@@ -28,7 +28,34 @@ const {chromium}=require('playwright-core');
   await page.evaluate(async()=>{patients=[];await loadDB();const id=patients[0].evolucoes[0].id;openDailyEvolutionModal('',id,'synthetic-qa-patient');});
   await page.waitForTimeout(100);assert.equal(await page.locator('#deConduct').inputValue(),'Alongamentos realizados.');
   assert.equal(await page.evaluate(()=>testCloud.data.patients[0].evolucoes.length),1);
+  // Exercise the real browser audio decoder and WAV encoder using synthetic audio.
+  await page.evaluate(()=>{
+   closeModal('dailyEvolutionModal');
+   class LongRecorder {
+    static isTypeSupported(){return true;}
+    constructor(){this.state='inactive';this.mimeType='audio/wav';}
+    start(){this.state='recording';} pause(){this.state='paused';} resume(){this.state='recording';}
+    stop(){
+     this.state='inactive';const rate=16000,n=rate*125,buf=new ArrayBuffer(44+n*2),v=new DataView(buf);
+     const put=(p,s)=>{for(let i=0;i<s.length;i++)v.setUint8(p+i,s.charCodeAt(i));};
+     put(0,'RIFF');v.setUint32(4,36+n*2,true);put(8,'WAVE');put(12,'fmt ');v.setUint32(16,16,true);
+     v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,rate,true);v.setUint32(28,rate*2,true);
+     v.setUint16(32,2,true);v.setUint16(34,16,true);put(36,'data');v.setUint32(40,n*2,true);
+     setTimeout(()=>{this.ondataavailable?.({data:new Blob([buf],{type:'audio/wav'})});this.onstop?.({});},0);
+    }
+   }
+   window.MediaRecorder=LongRecorder;window.testRequests=[];
+   openDailyEvolutionModal('','','synthetic-qa-patient');
+  });
+  await page.waitForTimeout(100);
+  await page.locator('#deRecordBtn').click();await page.locator('#deSendBtn').click();
+  await page.waitForFunction(()=>window.testRequests.filter(x=>x.mode==='query').length===1,null,{timeout:30000});
+  const longRequests=await page.evaluate(()=>testRequests.map(x=>({mode:x.mode,mime:x.mimeType,size:x.audioBase64?.length,context:x.context})));
+  assert.deepEqual(longRequests.map(x=>x.mode),['transcribe','transcribe','transcribe','query']);
+  assert.ok(longRequests.slice(0,3).every(x=>x.mime==='audio/wav' && x.size>1000));
+  assert.equal((longRequests[3].context.match(/Paciente com dor/g)||[]).length,3);
   await page.screenshot({path:'tests/isabela-v34-mobile.png',fullPage:true});
   assert.deepEqual(errors,[]);console.log('Browser QA PASS: mobile UI, pause/send, transcript/fill, failed save, retry, persisted record reopened.');
  }finally{await browser.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
