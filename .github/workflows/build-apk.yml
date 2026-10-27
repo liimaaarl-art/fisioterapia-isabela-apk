@@ -39,7 +39,7 @@ jobs:
           npm install @capacitor/core@8 @capacitor/android@8 @capacitor/local-notifications@8
           npm install --save-dev @capacitor/cli@8 @capacitor/assets
 
-      - name: Preparar aplicativo v34 com áudio automático
+      - name: Preparar aplicativo v35 com áudio por trechos
         run: |
           mkdir -p www
           for f in index.html isabela_v24_functional.js isabela_v26_premium.js isabela_v27_agenda.js isabela_v29_ai_evolution.js isabela_v30_gemini_only.js isabela_v31_gemini_resilience.js isabela_v33_appointment_reminders.js isabela_v34_audio.js brand_menu.b64 icon_v25.b64; do test -f "$f" || exit 1; done
@@ -93,7 +93,7 @@ jobs:
               'Isabela Martins • v32 • Gemini Corrigido + Evolução Inteligente + Agenda Informativa'
           ]:
               text=text.replace(old,'Isabela Martins • v33 • Lembretes 10 min + Gemini + Agenda Informativa')
-          text=text.replace('Isabela Martins • v33 • Lembretes 10 min + Gemini + Agenda Informativa','Isabela Martins • v34 • Áudio automático + Salvamento confirmado')
+          text=text.replace('Isabela Martins • v33 • Lembretes 10 min + Gemini + Agenda Informativa','Isabela Martins • v35 • Áudio por trechos + revisão')
           brand=Path('brand_menu.b64').read_text().strip()
           icon=Path('icon_v25.b64').read_text().strip()
           base64.b64decode(brand,validate=True); base64.b64decode(icon,validate=True)
@@ -206,7 +206,7 @@ jobs:
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Isabela-Martins-v34-Audio-Automatico
+          name: Isabela-Martins-v35-Audio-por-Trechos
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30

@@ -84,3 +84,49 @@ test('overlapping send clicks are ignored and modal stays open during processing
 test('multiple paragraphs remain intact in organizer context',async()=>{
  const s=setup();await s.open();const raw=Array.from({length:30},(_,i)=>`Parágrafo ${i}: paciente relata evolução e realizou exercícios.`).join('\n\n');s.element('deAIRaw').value=raw;await s.ctx.sendEvolutionRecordingToAI();assert.equal(s.requests[0].context,raw);assert.equal(s.requests[0].mode,'query');
 });
+
+function fakeDecodedAudio(s,seconds=125){
+ const rate=1000, samples=new Float32Array(rate*seconds).fill(0.1);
+ s.ctx.AudioContext=class {async decodeAudioData(){return {length:samples.length,sampleRate:rate,numberOfChannels:1,duration:seconds,getChannelData:()=>samples};}async close(){}};
+}
+
+test('long audio becomes complete WAV segments in order, then organized once',async()=>{
+ const s=setup();fakeDecodedAudio(s);await s.open();let count=0;
+ s.ctx.sb.functions.invoke=async(name,{body})=>{
+   s.requests.push(body);
+   if(body.mode==='transcribe')return {data:{text:['Início: PA 120 por 80.','Conduta: marcha assistida.','Final: dor 3 de 10.'][count++]}};
+   return {data:{text:JSON.stringify(s.structured)}};
+ };
+ await s.ctx.toggleEvolutionRecording();await s.ctx.sendEvolutionRecordingToAI();
+ assert.deepEqual(s.requests.map(x=>x.mode),['transcribe','transcribe','transcribe','query']);
+ for(const item of s.requests.slice(0,3)){
+   const bytes=Buffer.from(item.audioBase64,'base64');assert.equal(item.mimeType,'audio/wav');assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.toString('ascii',8,12),'WAVE');assert.equal(bytes.readUInt32LE(40),bytes.length-44);
+ }
+ assert.match(s.requests[3].context,/Início: PA 120 por 80\.[\s\S]*Conduta: marcha assistida\.[\s\S]*Final: dor 3 de 10/);
+});
+
+test('failure at a segment resumes from saved progress without repeating previous speech',async()=>{
+ const shared=new Map(), s=setup(shared);fakeDecodedAudio(s);await s.open();let n=0;
+ s.ctx.sb.functions.invoke=async(name,{body})=>{
+   s.requests.push(body);
+   if(body.mode==='transcribe'){n++;return n===2?{error:{message:'falha simulada'}}:{data:{text:'Trecho primeiro'}};}
+   return {data:{text:JSON.stringify(s.structured)}};
+ };
+ await s.ctx.toggleEvolutionRecording();await s.ctx.sendEvolutionRecordingToAI();
+ assert.match(s.element('deAudioStatus').textContent,/Tentar novamente/);
+ assert.equal([...shared.values()][0].transcriptParts.length,1);
+ const next=setup(shared);fakeDecodedAudio(next);await next.open();let part=1;
+ next.ctx.sb.functions.invoke=async(name,{body})=>{next.requests.push(body);return {data:{text:body.mode==='transcribe'?['Trecho segundo','Trecho terceiro'][part++ - 1]:JSON.stringify(next.structured)}};};
+ await next.ctx.sendEvolutionRecordingToAI();
+ assert.deepEqual(next.requests.map(x=>x.mode),['transcribe','transcribe','query']);
+ assert.equal(next.requests[2].context,'Trecho primeiro\n\nTrecho segundo\n\nTrecho terceiro');
+ assert.equal(next.element('deAIRaw').value,next.requests[2].context);
+});
+
+test('manual field differences are preserved and review is clearly requested',async()=>{
+ const s=setup();await s.open();s.element('deVitalInitial').value='Ajustado pela profissional';s.element('deAIRaw').value='Texto de evolução';
+ await s.ctx.sendEvolutionRecordingToAI();
+ assert.equal(s.element('deVitalInitial').value,'Ajustado pela profissional');
+ assert.match(s.element('deAudioStatus').textContent,/Compare com o relato/);
+});
+
