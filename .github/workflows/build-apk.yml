@@ -134,6 +134,17 @@ jobs:
           }
           EOF
 
+      - name: Identificar a versão de teste
+        if: github.event_name == 'pull_request'
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const cfg = JSON.parse(fs.readFileSync('capacitor.config.json', 'utf8'));
+          cfg.appId = 'com.florindosistemas.isabelamartins.teste';
+          cfg.appName = 'Isabela Martins - Teste';
+          fs.writeFileSync('capacitor.config.json', JSON.stringify(cfg, null, 2));
+          NODE
+
       - name: Criar projeto Android
         run: |
           rm -rf android
@@ -206,7 +217,7 @@ jobs:
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Isabela-Martins-v35-Audio-por-Trechos
+          name: Isabela-Martins-v35-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
