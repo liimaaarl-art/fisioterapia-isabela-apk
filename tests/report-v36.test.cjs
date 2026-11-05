@@ -46,6 +46,7 @@ function setup(){
     selectedPatientId:'p1',patientTab:'dados',cloudReady:true,storageMode:'supabase',
     generatePatientAIReport(){},renderPatientDetail(){},openModal(){},closeModal(){},
     uid(){return 'report1';},
+    dateStr(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');},
     async persist(){ctx.persistCalled=true;},
     render(){ctx.renderCalled=true;},
     alert(x){ctx.alertText=x;},confirm(){return true;},
