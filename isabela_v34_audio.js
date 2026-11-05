@@ -344,3 +344,56 @@
   window.addEventListener('pagehide',()=>Object.values(controllers).forEach(c=>backup(c).catch(()=>{})));
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',enhance);else enhance();
 })();
+/* Seleção de evoluções por data para relatórios clínicos. */
+(function(){
+  'use strict';
+  let reportPatientId='';
+  const fields=[['Sinais vitais iniciais','vitalSignsInitial'],['Avaliação diária','dailyAssessment'],['Objetivo','treatmentObjective'],['Conduta','conductPerformed'],['Sinais vitais finais','vitalSignsFinal'],['Observações','observation']];
+  function recordsForDates(patient,dates){
+    const selected=new Set(dates);
+    return (patient.evolucoes||[]).filter(e=>selected.has(e.date)).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  }
+  function reportSource(patient,dates){
+    const records=recordsForDates(patient,dates);
+    const lines=['REGISTROS SELECIONADOS PARA RELATÓRIO',`Paciente: ${patient.name}`,`Datas escolhidas: ${dates.slice().sort().map(brDate).join(', ')}`,''];
+    for(const e of records){
+      lines.push(`ATENDIMENTO ${brDate(e.date)}`);
+      let hasStructured=false;
+      for(const [label,key] of fields){if(String(e[key]||'').trim()){lines.push(`${label}: ${String(e[key]).trim()}`);hasStructured=true;}}
+      if(!hasStructured && String(e.text||'').trim())lines.push(`Registro: ${String(e.text).trim()}`);
+      lines.push('');
+    }
+    return lines.join('\n');
+  }
+  function modal(){
+    let el=document.getElementById('selectedDatesReportModal');
+    if(el)return el;
+    document.body.insertAdjacentHTML('beforeend',`<div class="modal-back" id="selectedDatesReportModal"><div class="modal" style="max-width:700px"><div class="modal-head"><h3>Gerar relatório por atendimento</h3><button class="btn tiny" type="button" onclick="closeModal('selectedDatesReportModal')">✕</button></div><div class="modal-body"><p id="selectedDatesReportPatient"></p><p>Selecione as datas das evoluções que deseja incluir. Apenas os registros marcados serão enviados para gerar o relatório.</p><div id="selectedDatesReportList" style="max-height:250px;overflow:auto;border:1px solid #ddd;border-radius:8px;padding:10px"></div><div class="field" style="margin-top:15px"><label for="selectedDatesReportFormat">Versão do relatório</label><select id="selectedDatesReportFormat"><option value="summary">Resumida</option><option value="extended">Estendida</option></select></div><p class="helper">Revise o texto gerado antes de salvar, assinar ou compartilhar.</p></div><div class="modal-foot"><button class="btn" type="button" onclick="closeModal('selectedDatesReportModal')">Cancelar</button><button class="btn primary" type="button" onclick="createSelectedDatesReport()">Gerar relatório</button></div></div></div>`);
+    return document.getElementById('selectedDatesReportModal');
+  }
+  window.generatePatientAIReport=function(id){
+    const patient=patientById(id);if(!patient)return;
+    reportPatientId=id;modal();
+    document.getElementById('selectedDatesReportPatient').textContent=`Paciente: ${patient.name}`;
+    const dates=[...new Set((patient.evolucoes||[]).map(e=>e.date).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d||'')))].sort().reverse();
+    document.getElementById('selectedDatesReportList').innerHTML=dates.length?dates.map(date=>`<label style="display:flex;align-items:center;gap:10px;padding:8px"><input type="checkbox" value="${date}"> ${esc(brDate(date))} <span class="helper">(${(patient.evolucoes||[]).filter(e=>e.date===date).length} evolução(ões))</span></label>`).join(''):'<p>Nenhuma evolução com data encontrada para este paciente.</p>';
+    document.getElementById('selectedDatesReportFormat').value='summary';openModal('selectedDatesReportModal');
+  };
+  window.createSelectedDatesReport=async function(){
+    const patient=patientById(reportPatientId);if(!patient)return;
+    const dates=[...document.querySelectorAll('#selectedDatesReportList input:checked')].map(x=>x.value);
+    if(!dates.length){alert('Selecione ao menos uma data com evolução.');return;}
+    const format=document.getElementById('selectedDatesReportFormat').value;
+    const extended=format==='extended';
+    if(!confirm(`Enviar à IA somente as evoluções selecionadas de ${patient.name} para preparar o relatório? Revise o resultado antes de utilizar.`))return;
+    const source=reportSource(patient,dates),title=`📄 Relatório ${extended?'estendido':'resumido'} • ${patient.name}`;
+    closeModal('selectedDatesReportModal');openAITextModal(title,'Gerando rascunho com IA…');
+    try{
+      const instruction=extended?'Redija um relatório fisioterapêutico estendido, organizado por data, preservando todos os detalhes clínicos relevantes de cada registro.':'Redija um relatório fisioterapêutico resumido, sintetizando os pontos principais das datas selecionadas.';
+      const text=await invokeIsabelaAI('report',`${instruction} Use exclusivamente os registros fornecidos. Não acrescente fatos, datas, diagnósticos ou conclusões não informados. Assinale informações ausentes quando necessário.`,source);
+      if(!document.getElementById('aiModal').classList.contains('show'))return;
+      openAITextModal(title,text,{saveReport:true,patientId:patient.id});
+    }catch(e){openAITextModal(title,`Não foi possível gerar o relatório: ${e.message}\n\nRegistros selecionados para conferência:\n\n${source}`,{saveReport:false});}
+  };
+  if(typeof module!=='undefined'&&module.exports)module.exports={recordsForDates,reportSource};
+})();
