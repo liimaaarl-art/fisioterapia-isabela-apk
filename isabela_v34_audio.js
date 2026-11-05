@@ -2,6 +2,7 @@
 (function(){
   'use strict';
   const MAX_AUDIO=20*1024*1024;
+  const SEGMENT_SECONDS=60;
   const fields={vitalSignsInitial:'deVitalInitial',dailyAssessment:'deDailyAssessment',objective:'deObjective',conduct:'deConduct',vitalSignsFinal:'deVitalFinal',observation:'deObservation'};
   const $=id=>document.getElementById(id);
   const value=id=>$(id)?.value||'';
@@ -48,12 +49,12 @@
     (c.kind==='evolution'?setEvolutionAudioStatus:setReportAudioStatus)(msg,error?'error':'ready');
   }
   function controller(kind){
-    return controllers[kind]||(controllers[kind]={kind,rec:null,stream:null,chunks:[],blob:null,transcript:'',applied:false,busy:false,starting:false,key:'',write:Promise.resolve(),timer:null});
+    return controllers[kind]||(controllers[kind]={kind,rec:null,stream:null,chunks:[],blob:null,transcript:'',transcriptParts:[],segmentCount:null,applied:false,busy:false,starting:false,key:'',write:Promise.resolve(),timer:null});
   }
   function ids(c){return c.kind==='evolution'?['deRecordBtn','deFinishBtn','deSendBtn','dailyEvolutionModal']:['reportRecordBtn','reportFinishBtn','reportSendBtn','entryModal'];}
   function rawId(c){return c.kind==='evolution'?'deAIRaw':'eText';}
   function snapshot(c){
-    const data={key:c.key,blob:c.blob,transcript:c.transcript,applied:c.applied,generated:c.generated||{},values:{},updatedAt:Date.now()};
+    const data={key:c.key,blob:c.blob,transcript:c.transcript,transcriptParts:c.transcriptParts||[],segmentCount:c.segmentCount,applied:c.applied,generated:c.generated||{},values:{},updatedAt:Date.now()};
     const list=c.kind==='evolution'?['dePatient','deDate','deAIRaw',...Object.values(fields)]:['eDate','eTitle','eText'];
     list.forEach(id=>data.values[id]=value(id));
     return data;
@@ -82,7 +83,7 @@
   async function bind(kind){
     const c=controller(kind),key=context(kind);if(!key)return;
     if(c.key===key){buttons(c);return;}
-    c.key=key;c.blob=null;c.transcript='';c.applied=false;c.failed=false;c.generated={};
+    c.key=key;c.blob=null;c.transcript='';c.transcriptParts=[];c.segmentCount=null;c.applied=false;c.failed=false;c.generated={};
     const baseline=snapshot(c).values;
     try{
       const old=await draftStore('get',key);
@@ -90,7 +91,7 @@
       // Do not overwrite anything typed while IndexedDB was loading.
       if(old&&JSON.stringify(snapshot(c).values)===JSON.stringify(baseline)){
         for(const [id,v] of Object.entries(old.values||{}))if($(id))$(id).value=v;
-        c.blob=old.blob;c.transcript=old.transcript||'';c.applied=!!old.applied;c.generated=old.generated||{};
+        c.blob=old.blob;c.transcript=old.transcript||'';c.transcriptParts=Array.isArray(old.transcriptParts)?old.transcriptParts:[];c.segmentCount=old.segmentCount??null;c.applied=!!old.applied;c.generated=old.generated||{};
         status(c,'Rascunho recuperado neste aparelho. Você pode continuar ou enviar.');
       }
     }catch{status(c,'Cópia local indisponível. Mantenha a tela aberta até salvar.',true);}
@@ -111,7 +112,7 @@
       c.stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
       const mime=['audio/webm;codecs=opus','audio/mp4','audio/webm'].find(t=>MediaRecorder.isTypeSupported(t));
       c.rec=new MediaRecorder(c.stream,{...(mime?{mimeType:mime}:{}),audioBitsPerSecond:32000});
-      c.chunks=[];c.blob=null;c.transcript='';c.applied=false;c.failed=false;c.limit=false;
+      c.chunks=[];c.blob=null;c.transcript='';c.transcriptParts=[];c.segmentCount=null;c.applied=false;c.failed=false;c.limit=false;
       const recorder=c.rec;
       c.rec.ondataavailable=e=>{
         if(e.data?.size)c.chunks.push(e.data);
@@ -145,6 +146,61 @@
     if(!data?.text?.trim())throw new Error(data?.error||'A IA retornou uma resposta vazia.');
     return data.text.trim();
   }
+
+  // MediaRecorder's timeslice fragments are not independent audio files.
+  // Decode the completed recording and encode valid, bounded WAV files instead.
+  function encodeWavPart(audio,startSeconds,endSeconds){
+    const rate=Math.min(16000,audio.sampleRate), start=Math.floor(startSeconds*audio.sampleRate);
+    const end=Math.min(audio.length,Math.floor(endSeconds*audio.sampleRate));
+    const samples=Math.ceil((end-start)*rate/audio.sampleRate);
+    const buffer=new ArrayBuffer(44+samples*2), v=new DataView(buffer);
+    const ascii=(offset,s)=>{for(let i=0;i<s.length;i++)v.setUint8(offset+i,s.charCodeAt(i));};
+    ascii(0,'RIFF');v.setUint32(4,36+samples*2,true);ascii(8,'WAVE');ascii(12,'fmt ');
+    v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,rate,true);
+    v.setUint32(28,rate*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);ascii(36,'data');v.setUint32(40,samples*2,true);
+    const channels=Array.from({length:audio.numberOfChannels},(_,i)=>audio.getChannelData(i));
+    for(let i=0;i<samples;i++){
+      const from=start+Math.floor(i*audio.sampleRate/rate),to=Math.min(end,start+Math.floor((i+1)*audio.sampleRate/rate));
+      let sum=0,count=0;
+      for(let j=from;j<Math.max(from+1,to)&&j<end;j++)for(const ch of channels){sum+=ch[j];count++;}
+      const x=Math.max(-1,Math.min(1,count?sum/count:0));v.setInt16(44+i*2,x<0?x*32768:x*32767,true);
+    }
+    return new Blob([buffer],{type:'audio/wav'});
+  }
+  async function audioSegments(blob){
+    const AudioCtx=window.AudioContext||window.webkitAudioContext;
+    if(!AudioCtx)return {count:1,part:()=>blob,close:async()=>{},fallback:true};
+    let ac;
+    try{
+      ac=new AudioCtx();
+      const audio=await ac.decodeAudioData(await blob.arrayBuffer());
+      if(!audio?.length||!audio.sampleRate||!audio.numberOfChannels)throw new Error('Áudio vazio ou inválido.');
+      const count=Math.max(1,Math.ceil(audio.duration/SEGMENT_SECONDS));
+      return {count,part:i=>count===1?blob:encodeWavPart(audio,i*SEGMENT_SECONDS,Math.min((i+1)*SEGMENT_SECONDS,audio.duration)),close:()=>ac.close?.().catch(()=>{}),fallback:false};
+    }catch(e){
+      if(ac?.close)await ac.close().catch(()=>{});
+      // Older WebViews may not decode the recorder's format. Preserve the original.
+      return {count:1,part:()=>blob,close:async()=>{},fallback:true};
+    }
+  }
+  async function transcribeInParts(c,key){
+    const segments=await audioSegments(c.blob);
+    try{
+      if(c.segmentCount!==null&&c.segmentCount!==segments.count&&c.transcriptParts.length)
+        throw new Error('Não foi possível retomar os mesmos trechos. O áudio original continua guardado.');
+      c.segmentCount=segments.count;
+      for(let i=c.transcriptParts.length;i<segments.count;i++){
+        if(context(c.kind)!==key)throw new Error('O atendimento mudou. O áudio permanece no rascunho original.');
+        status(c,segments.count>1?`Transcrevendo trecho ${i+1} de ${segments.count}…`:'Enviando áudio e transcrevendo…');
+        const part=segments.part(i);
+        const text=await invoke({mode:'transcribe',audioBase64:await blobBase64Raw(part),mimeType:part.type||'audio/webm'});
+        if(context(c.kind)!==key)throw new Error('O atendimento mudou. O áudio permanece no rascunho original.');
+        c.transcriptParts.push(text);
+        await backup(c);
+      }
+      return c.transcriptParts.join('\n\n');
+    }finally{await segments.close();}
+  }
   async function send(kind){
     const c=controller(kind);if(c.busy||c.starting||saveBusy)return;
     c.busy=true;c.failed=false;buttons(c);
@@ -155,8 +211,8 @@
       if(c.blob&&!c.transcript){
         if(!c.blob.size)throw new Error('O áudio está vazio. Grave novamente.');
         if(c.blob.size>MAX_AUDIO)throw new Error('O áudio ultrapassa 20 MB. O arquivo foi preservado. Escolha um áudio menor.');
-        status(c,'Enviando áudio e transcrevendo…');
-        c.transcript=await invoke({mode:'transcribe',audioBase64:await blobBase64Raw(c.blob),mimeType:c.blob.type||'audio/webm'});
+        await backup(c);
+        c.transcript=await transcribeInParts(c,key);
       }
       if(context(kind)!==key)throw new Error('O atendimento mudou. O áudio permanece no rascunho original.');
       const raw=$(rawId(c));
@@ -165,39 +221,38 @@
       await backup(c).catch(()=>{});
       if(kind==='evolution'){
         status(c,'Preenchendo os campos da evolução…');
-        const question='Organize o relato em evolução fisioterapêutica. Retorne SOMENTE JSON com as chaves vitalSignsInitial, dailyAssessment, objective, conduct, vitalSignsFinal, observation, todas strings. Use exclusivamente os fatos explicitamente relatados. Preserve números, unidades, lateralidade e escalas. Não deduza objetivos nem diagnósticos. Informação ausente deve ser string vazia; indique trechos ambíguos em observation para revisão.';
+        const question='Organize o relato completo em evolução fisioterapêutica, mesmo se as informações vierem fora de ordem. Retorne SOMENTE JSON com as chaves vitalSignsInitial, dailyAssessment, objective, conduct, vitalSignsFinal, observation, todas strings. Inclua os fatos relevantes explicitamente relatados nos campos adequados. Preserve números, unidades, lateralidade e escalas. Não deduza objetivos nem diagnósticos. Informação ausente deve ser string vazia; indique trechos ambíguos em observation para revisão.';
         const text=await invoke({mode:'query',question,context:raw.value.trim()});
         const data=JSON.parse(text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim());
         if(!data||Array.isArray(data)||Object.keys(fields).some(k=>typeof data[k]!=='string'))throw new Error('A IA retornou campos inválidos. Seu relato foi preservado.');
         if(context(kind)!==key)throw new Error('O atendimento mudou. Reabra o rascunho original.');
-        for(const [k,id] of Object.entries(fields))if((!value(id).trim()||value(id)===c.generated?.[id])&&data[k].trim()){$(id).value=data[k].trim();(c.generated||={})[id]=$(id).value;$(id).dispatchEvent(new Event('input',{bubbles:true}));}
+        let preserved=false;
+        for(const [k,id] of Object.entries(fields))if(data[k].trim()){
+          if(!value(id).trim()||value(id)===c.generated?.[id]){$(id).value=data[k].trim();(c.generated||={})[id]=$(id).value;$(id).dispatchEvent(new Event('input',{bubbles:true}));}
+          else if(value(id).trim()!==data[k].trim())preserved=true;
+        }
+        c.preservedManual=preserved;
       }
       await backup(c).catch(()=>{});
-      status(c,kind==='evolution'?'✓ Transcrição e preenchimento concluídos. Revise os campos e toque em Salvar evolução.':'✓ Áudio transcrito no relatório. Revise o texto e toque em Salvar.');
+      status(c,kind==='evolution'?(c.preservedManual?'✓ Campos editados manualmente foram mantidos. Compare com o relato e revise antes de salvar.':'✓ Transcrição e preenchimento concluídos. Revise os campos e toque em Salvar evolução.'):'✓ Áudio transcrito no relatório. Revise o texto e toque em Salvar.');
     }catch(e){c.failed=true;status(c,(e.message||'Não foi possível processar.')+' O áudio e o texto foram mantidos. Toque em Tentar novamente.',true);}
     finally{c.busy=false;buttons(c);}
   }
   function reset(kind){
     const c=controller(kind);clearTimeout(c.timer);
     if(c.rec){c.rec.ondataavailable=null;c.rec.onstop=null;try{c.rec.stop();}catch{}}
-    c.stream?.getTracks().forEach(t=>t.stop());c.rec=null;c.stream=null;c.chunks=[];c.blob=null;c.transcript='';c.applied=false;c.key='';c.failed=false;c.generated={};
+    c.stream?.getTracks().forEach(t=>t.stop());c.rec=null;c.stream=null;c.chunks=[];c.blob=null;c.transcript='';c.transcriptParts=[];c.segmentCount=null;c.applied=false;c.key='';c.failed=false;c.generated={};
     buttons(c);
   }
   async function confirmedPersist(){
     let localError;
     try{if(db)await saveDB();else localStorage.setItem(fallbackKey(),JSON.stringify(statePayload()));}catch(e){localError=e;}
-    syncing=true;updateStorage();
     try{
-      if(!currentUser?.id)throw new Error('Entre novamente para salvar na nuvem.');
-      const now=new Date().toISOString();
-      const {data,error}=await sb.from('app_state').upsert({user_id:currentUser.id,data:statePayload(),updated_at:now},{onConflict:'user_id'}).select('user_id,updated_at').single();
-      if(error)throw error;
-      if(data?.user_id!==currentUser.id)throw new Error('O banco não confirmou o salvamento.');
-      cloudReady=true;storageMode='supabase';lastCloudSync=data.updated_at;
+      await saveCloudState();
     }catch(e){
-      cloudReady=false;storageMode='local-cache';
+      cloudReady=false;storageMode='local-cache';updateStorage();
       throw new Error((e.message||'Falha de conexão.')+(localError?' A cópia local também falhou. Mantenha esta tela aberta.':' Há uma cópia local neste aparelho.'));
-    }finally{syncing=false;updateStorage();}
+    }
   }
   async function save(kind){
     const c=controller(kind);if(saveBusy||c.busy||c.starting)return;
@@ -244,7 +299,7 @@
   window.finishEvolutionRecording=()=>stop(controller('evolution'));window.finishReportRecording=()=>stop(controller('report'));
   window.resetEvolutionRecording=()=>reset('evolution');window.resetReportRecording=()=>reset('report');
   window.updateEvolutionAudioButtons=()=>buttons(controller('evolution'));window.updateReportAudioButtons=()=>buttons(controller('report'));
-  window.handleReportAudioFile=async input=>{const c=controller('report');if(c.busy||c.starting||saveBusy)return;await bind('report');const f=input?.files?.[0];if(f){c.blob=f;c.transcript='';c.applied=false;await backup(c).catch(()=>{});status(c,'Áudio selecionado. Toque em Enviar.');buttons(c);}input.value='';};
+  window.handleReportAudioFile=async input=>{const c=controller('report');if(c.busy||c.starting||saveBusy)return;await bind('report');const f=input?.files?.[0];if(f){c.blob=f;c.transcript='';c.transcriptParts=[];c.segmentCount=null;c.applied=false;await backup(c).catch(()=>{});status(c,'Áudio selecionado. Toque em Enviar.');buttons(c);}input.value='';};
   window.saveDailyEvolution=()=>save('evolution');window.saveEntry=()=>save('report');
   window.fillEvolutionWithGemini=()=>send('evolution');
   const originalClose=window.closeModal;
@@ -261,7 +316,7 @@
   window.clearEvolutionDraft=async function(){
     const c=controller('evolution');if(c.busy||c.starting||saveBusy)return;
     if(!confirm('Limpar o relato e o áudio deste rascunho? Os campos preenchidos serão mantidos.'))return;
-    await stop(c);c.blob=null;c.transcript='';c.applied=false;$('deAIRaw').value='';await backup(c).catch(()=>{});status(c,'Relato limpo.');buttons(c);
+    await stop(c);c.blob=null;c.transcript='';c.transcriptParts=[];c.segmentCount=null;c.applied=false;$('deAIRaw').value='';await backup(c).catch(()=>{});status(c,'Relato limpo.');buttons(c);
   };
   function enhance(){
     for(const kind of ['evolution','report']){
@@ -282,4 +337,57 @@
   document.addEventListener('change',e=>{if(['dePatient','deDate','eDate'].includes(e.target.id)){const c=controller(e.target.id==='eDate'?'report':'evolution');if(c.blob||c.rec){status(c,'Volte ao paciente e à data originais para continuar este áudio.',true);return;}bind(c.kind);}});
   window.addEventListener('pagehide',()=>Object.values(controllers).forEach(c=>backup(c).catch(()=>{})));
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',enhance);else enhance();
+})();
+/* Seleção de evoluções por data para relatórios clínicos. */
+(function(){
+  'use strict';
+  let reportPatientId='';
+  const fields=[['Sinais vitais iniciais','vitalSignsInitial'],['Avaliação diária','dailyAssessment'],['Objetivo','treatmentObjective'],['Conduta','conductPerformed'],['Sinais vitais finais','vitalSignsFinal'],['Observações','observation']];
+  function recordsForDates(patient,dates){
+    const selected=new Set(dates);
+    return (patient.evolucoes||[]).filter(e=>selected.has(e.date)).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  }
+  function reportSource(patient,dates){
+    const records=recordsForDates(patient,dates);
+    const lines=['REGISTROS SELECIONADOS PARA RELATÓRIO',`Paciente: ${patient.name}`,`Datas escolhidas: ${dates.slice().sort().map(brDate).join(', ')}`,''];
+    for(const e of records){
+      lines.push(`ATENDIMENTO ${brDate(e.date)}`);
+      let hasStructured=false;
+      for(const [label,key] of fields){if(String(e[key]||'').trim()){lines.push(`${label}: ${String(e[key]).trim()}`);hasStructured=true;}}
+      if(!hasStructured && String(e.text||'').trim())lines.push(`Registro: ${String(e.text).trim()}`);
+      lines.push('');
+    }
+    return lines.join('\n');
+  }
+  function modal(){
+    let el=document.getElementById('selectedDatesReportModal');
+    if(el)return el;
+    document.body.insertAdjacentHTML('beforeend',`<div class="modal-back" id="selectedDatesReportModal"><div class="modal" style="max-width:700px"><div class="modal-head"><h3>Gerar relatório por atendimento</h3><button class="btn tiny" type="button" onclick="closeModal('selectedDatesReportModal')">✕</button></div><div class="modal-body"><p id="selectedDatesReportPatient"></p><p>Selecione as datas das evoluções que deseja incluir. Apenas os registros marcados serão enviados para gerar o relatório.</p><div id="selectedDatesReportList" style="max-height:250px;overflow:auto;border:1px solid #ddd;border-radius:8px;padding:10px"></div><div class="field" style="margin-top:15px"><label for="selectedDatesReportFormat">Versão do relatório</label><select id="selectedDatesReportFormat"><option value="summary">Resumida</option><option value="extended">Estendida</option></select></div><p class="helper">Revise o texto gerado antes de salvar, assinar ou compartilhar.</p></div><div class="modal-foot"><button class="btn" type="button" onclick="closeModal('selectedDatesReportModal')">Cancelar</button><button class="btn primary" type="button" onclick="createSelectedDatesReport()">Gerar relatório</button></div></div></div>`);
+    return document.getElementById('selectedDatesReportModal');
+  }
+  window.generatePatientAIReport=function(id){
+    const patient=patientById(id);if(!patient)return;
+    reportPatientId=id;modal();
+    document.getElementById('selectedDatesReportPatient').textContent=`Paciente: ${patient.name}`;
+    const dates=[...new Set((patient.evolucoes||[]).map(e=>e.date).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d||'')))].sort().reverse();
+    document.getElementById('selectedDatesReportList').innerHTML=dates.length?dates.map(date=>`<label style="display:flex;align-items:center;gap:10px;padding:8px"><input type="checkbox" value="${date}"> ${esc(brDate(date))} <span class="helper">(${(patient.evolucoes||[]).filter(e=>e.date===date).length} evolução(ões))</span></label>`).join(''):'<p>Nenhuma evolução com data encontrada para este paciente.</p>';
+    document.getElementById('selectedDatesReportFormat').value='summary';openModal('selectedDatesReportModal');
+  };
+  window.createSelectedDatesReport=async function(){
+    const patient=patientById(reportPatientId);if(!patient)return;
+    const dates=[...document.querySelectorAll('#selectedDatesReportList input:checked')].map(x=>x.value);
+    if(!dates.length){alert('Selecione ao menos uma data com evolução.');return;}
+    const format=document.getElementById('selectedDatesReportFormat').value;
+    const extended=format==='extended';
+    if(!confirm(`Enviar à IA somente as evoluções selecionadas de ${patient.name} para preparar o relatório? Revise o resultado antes de utilizar.`))return;
+    const source=reportSource(patient,dates),title=`📄 Relatório ${extended?'estendido':'resumido'} • ${patient.name}`;
+    closeModal('selectedDatesReportModal');openAITextModal(title,'Gerando rascunho com IA…');
+    try{
+      const instruction=extended?'Redija um relatório fisioterapêutico estendido, organizado por data, preservando todos os detalhes clínicos relevantes de cada registro.':'Redija um relatório fisioterapêutico resumido, sintetizando os pontos principais das datas selecionadas.';
+      const text=await invokeIsabelaAI('report',`${instruction} Use exclusivamente os registros fornecidos. Não acrescente fatos, datas, diagnósticos ou conclusões não informados. Assinale informações ausentes quando necessário.`,source);
+      if(!document.getElementById('aiModal').classList.contains('show'))return;
+      openAITextModal(title,text,{saveReport:true,patientId:patient.id});
+    }catch(e){openAITextModal(title,`Não foi possível gerar o relatório: ${e.message}\n\nRegistros selecionados para conferência:\n\n${source}`,{saveReport:false});}
+  };
+  if(typeof module!=='undefined'&&module.exports)module.exports={recordsForDates,reportSource};
 })();
