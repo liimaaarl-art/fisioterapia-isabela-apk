@@ -17,7 +17,7 @@
   var patient = function () { return patients.find(function (p) { return p.id === activePatientId; }); };
   var getRows = function (p) {
     var map = new Map();
-    var todayValue = new Date().toISOString().slice(0, 10);
+    var todayValue = dateStr(new Date());
     function row(date) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) || date > todayValue) return null;
       if (!map.has(date)) map.set(date, {date: date, visits: [], evolutions: []});
@@ -86,7 +86,7 @@
       'Profissional: ' + m.professional + ' — ' + m.registry,
       'Data de emissão: ' + m.issueDate,
       'Período selecionado: ' + dateLabel(m.sessions[0].date) + ' a ' + dateLabel(m.sessions[m.sessions.length - 1].date),
-      'Atendimentos / datas incluídas: ' + m.sessions.length
+      'Datas incluídas: ' + m.sessions.length
     ];
     if (m.purpose) parts.push('', 'FINALIDADE', m.purpose);
     if (m.context) parts.push('', 'CONTEXTO CLÍNICO REGISTRADO', m.context);
@@ -103,7 +103,7 @@
       return s ? '<section class="block"><h2>' + html(title) + '</h2><p>' + paragraph(s) + '</p></section>' : '';
     };
     return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + html(m.title) + '</title><style>' +
-      '@page{size:A4;margin:18mm 17mm 19mm}*{box-sizing:border-box}body{font:11pt/1.55 Arial,sans-serif;color:#26362e;margin:0;background:#fff}header{border-bottom:2px solid #648574;padding-bottom:15px;margin-bottom:22px}.brand{color:#42725b;font-weight:700;font-size:11pt;letter-spacing:.06em}h1{font:700 20pt/1.2 Georgia,serif;color:#264b3a;margin:9px 0 6px}.subtitle{color:#607467;font-size:9pt}dl{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin:12px 0 16px;padding:12px;background:#f3f7f3;border:1px solid #dae6da;border-radius:8px}dt{font-size:8pt;color:#61776a;text-transform:uppercase;letter-spacing:.04em}dd{margin:2px 0 0;font-weight:600}h2{font-size:11pt;color:#366449;margin:0 0 7px;text-transform:uppercase;letter-spacing:.035em;border-bottom:1px solid #dce5dd;padding-bottom:4px}.block{margin:16px 0;break-inside:avoid-page}.block p{white-space:normal;margin:0}.visit{margin:0 0 15px;border-left:3px solid #8caf94;padding:4px 0 4px 13px;break-inside:avoid-page}.visit h3{font-size:10.5pt;margin:0 0 5px}.visit p{margin:0;overflow-wrap:anywhere}.note{font-size:8.5pt;color:#738176;border-top:1px solid #e0e8e1;margin-top:28px;padding-top:9px}.sign{margin-top:44px;width:64%;border-top:1px solid #5c7564;padding-top:8px;break-inside:avoid-page;font-size:10pt}.sign small{display:block;color:#5a6c60} @media screen{body{max-width:820px;margin:28px auto;padding:32px;box-shadow:0 0 18px #d9e0d9}}' +
+      '@page{size:A4;margin:18mm 17mm 19mm}*{box-sizing:border-box}body{font:11pt/1.55 Arial,sans-serif;color:#26362e;margin:0;background:#fff}header{border-bottom:2px solid #648574;padding-bottom:15px;margin-bottom:22px}.brand{color:#42725b;font-weight:700;font-size:11pt;letter-spacing:.06em}h1{font:700 20pt/1.2 Georgia,serif;color:#264b3a;margin:9px 0 6px}.subtitle{color:#607467;font-size:9pt}dl{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin:12px 0 16px;padding:12px;background:#f3f7f3;border:1px solid #dae6da;border-radius:8px}dt{font-size:8pt;color:#61776a;text-transform:uppercase;letter-spacing:.04em}dd{margin:2px 0 0;font-weight:600}h2{font-size:11pt;color:#366449;margin:0 0 7px;text-transform:uppercase;letter-spacing:.035em;border-bottom:1px solid #dce5dd;padding-bottom:4px}.block{margin:16px 0}.block p{white-space:normal;margin:0}.visit{margin:0 0 15px;border-left:3px solid #8caf94;padding:4px 0 4px 13px;break-inside:avoid-page}.visit h3{font-size:10.5pt;margin:0 0 5px}.visit p{margin:0;overflow-wrap:anywhere}.note{font-size:8.5pt;color:#738176;border-top:1px solid #e0e8e1;margin-top:28px;padding-top:9px}.sign{margin-top:44px;width:64%;border-top:1px solid #5c7564;padding-top:8px;break-inside:avoid-page;font-size:10pt}.sign small{display:block;color:#5a6c60} @media screen{body{max-width:820px;margin:28px auto;padding:32px;box-shadow:0 0 18px #d9e0d9}}' +
       '</style></head><body><header><div class="brand">ISABELA MARTINS · FISIOTERAPIA</div><h1>' + html(m.title) + '</h1><div class="subtitle">Documento clínico para revisão da profissional responsável</div></header>' +
       '<dl><div><dt>Paciente</dt><dd>' + html(m.patientName) + '</dd></div><div><dt>Data de emissão</dt><dd>' + html(m.issueDate) + '</dd></div><div><dt>Profissional</dt><dd>' + html(m.professional) + '</dd></div><div><dt>Registro</dt><dd>' + html(m.registry) + '</dd></div><div><dt>Período contemplado</dt><dd>' + html(dateLabel(m.sessions[0].date) + ' a ' + dateLabel(m.sessions[m.sessions.length - 1].date)) + '</dd></div><div><dt>Datas incluídas</dt><dd>' + m.sessions.length + '</dd></div></dl>' +
       section('Finalidade', m.purpose) + section('Contexto clínico registrado', m.context) + section('Síntese do acompanhamento', m.summary) +
