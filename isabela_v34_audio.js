@@ -384,7 +384,8 @@
     closeModal('selectedDatesReportModal');openAITextModal(title,'Gerando rascunho com IA…');
     try{
       const instruction=extended?'Redija um relatório fisioterapêutico estendido, organizado por data, preservando todos os detalhes clínicos relevantes de cada registro.':'Redija um relatório fisioterapêutico resumido, sintetizando os pontos principais das datas selecionadas.';
-      const text=await invokeIsabelaAI('report',`${instruction} Use exclusivamente os registros fornecidos. Não acrescente fatos, datas, diagnósticos ou conclusões não informados. Assinale informações ausentes quando necessário.`,source);
+      const layout='Organize obrigatoriamente por DATA DE ATENDIMENTO, em ordem cronológica, com uma linha em branco entre as datas. Para cada dia, escreva o cabeçalho "ATENDIMENTO — DD/MM/AAAA" e os tópicos pertinentes em linhas separadas: Sinais vitais iniciais; Avaliação diária; Objetivos terapêuticos; Condutas realizadas; Sinais vitais finais; Observações. Use listas com marcadores para condutas e observações quando apropriado; omita tópicos sem registro, sem inventar informações. Não utilize tabelas, barras verticais, HTML, tags <br>, markdown de tabela nem linhas de traços. O texto deve ser legível para copiar, revisar e imprimir.';
+      const text=await invokeIsabelaAI('report',`${instruction} ${layout} Use exclusivamente os registros fornecidos. Não acrescente fatos, datas, diagnósticos ou conclusões não informados. Não misture evoluções de datas diferentes.`,source);
       if(!document.getElementById('aiModal').classList.contains('show'))return;
       openAITextModal(title,text,{saveReport:true,patientId:patient.id});
     }catch(e){openAITextModal(title,`Não foi possível gerar o relatório: ${e.message}\n\nRegistros selecionados para conferência:\n\n${source}`,{saveReport:false});}
