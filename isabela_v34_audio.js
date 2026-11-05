@@ -247,18 +247,12 @@
   async function confirmedPersist(){
     let localError;
     try{if(db)await saveDB();else localStorage.setItem(fallbackKey(),JSON.stringify(statePayload()));}catch(e){localError=e;}
-    syncing=true;updateStorage();
     try{
-      if(!currentUser?.id)throw new Error('Entre novamente para salvar na nuvem.');
-      const now=new Date().toISOString();
-      const {data,error}=await sb.from('app_state').upsert({user_id:currentUser.id,data:statePayload(),updated_at:now},{onConflict:'user_id'}).select('user_id,updated_at').single();
-      if(error)throw error;
-      if(data?.user_id!==currentUser.id)throw new Error('O banco não confirmou o salvamento.');
-      cloudReady=true;storageMode='supabase';lastCloudSync=data.updated_at;
+      await saveCloudState();
     }catch(e){
-      cloudReady=false;storageMode='local-cache';
+      cloudReady=false;storageMode='local-cache';updateStorage();
       throw new Error((e.message||'Falha de conexão.')+(localError?' A cópia local também falhou. Mantenha esta tela aberta.':' Há uma cópia local neste aparelho.'));
-    }finally{syncing=false;updateStorage();}
+    }
   }
   async function save(kind){
     const c=controller(kind);if(saveBusy||c.busy||c.starting)return;
