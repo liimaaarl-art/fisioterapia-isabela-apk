@@ -31,6 +31,7 @@ function setup(shared=new Map()){
     patientById:id=>ctx.patients.find(p=>p.id===id),professionalById:id=>ctx.professionals.find(p=>p.id===id),clone:structuredClone,today:()=> '2026-10-24',uid:(()=>{let i=0;return()=>`test-${++i}`;})(),
     findEvolutionById:id=>{for(const p of ctx.patients){const e=p.evolucoes.find(e=>e.id===id);if(e)return{patient:p,evolution:e};}return null;},evolutionText:o=>Object.values(o).filter(v=>typeof v==='string').join('\n'),syncAppointmentFinance(){},updateStorage(){},render(){},
     saveDB:async()=>{if(localError)throw Error('local quota');},statePayload:()=>structuredClone({patients:ctx.patients}),localStorage:{setItem(){}},fallbackKey:()=> 'test',
+    saveCloudState:async()=>{if(cloudError)throw Error('Sem conexão');cloudData={user_id:ctx.currentUser.id,data:ctx.statePayload(),updated_at:new Date().toISOString()};},
     alert:m=>alerts.push(m),confirm:()=>true,addEventListener(){},
     closeModal(id){element(id).classList.remove('show');if(id==='dailyEvolutionModal')ctx.resetEvolutionRecording();else ctx.resetReportRecording();},
     openDailyEvolutionModal(){element('dailyEvolutionModal').classList.add('show');},openEntryModal(){element('entryModal').classList.add('show');},
