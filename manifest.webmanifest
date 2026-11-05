@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "Isabela Martins | Fisioterapia",
+  "short_name": "Isabela",
+  "description": "Sistema de atendimentos de Isabela Martins Fisioterapeuta",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#193d3e",
+  "theme_color": "#193d3e",
+  "icons": [
+    {"src": "/web-icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any"},
+    {"src": "/web-icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any"},
+    {"src": "/web-icon-maskable-512.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable"}
+  ]
+}
