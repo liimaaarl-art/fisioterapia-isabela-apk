@@ -36,6 +36,17 @@
     return Array.from(map.values()).sort(function (a, b) { return b.date.localeCompare(a.date); });
   };
   var normalText = function (v) { return String(v == null ? '' : v).trim(); };
+  // Converte quebras HTML e tabelas em texto clínico legível sem interpretar HTML.
+  var cleanClinicalText = function (v) {
+    return normalText(v).replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/?(?:p|div|li|ul|strong|b)>/gi, '\n')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .split('\n').filter(function (line) {
+        return !/^\s*\|?\s*(?:Data\s*\||[-:|\s]{8,})\s*$/i.test(line);
+      }).join('\n')
+      .replace(/[ \t]*\|[ \t]*/g, '\n')
+      .replace(/\n{3,}/g, '\n\n').trim();
+  };
   var sectionText = function (r) {
     var entries = [];
     r.evolutions.forEach(function (e) {
@@ -46,8 +57,8 @@
         ['Conduta realizada', e.conductPerformed],
         ['Sinais vitais finais', e.vitalSignsFinal],
         ['Observações', e.observation]
-      ].filter(function (x) { return normalText(x[1]); });
-      entries.push(fields.map(function (x) { return x[0] + ': ' + normalText(x[1]); }).join('\n') || 'Evolução registrada sem descrição textual.');
+      ].filter(function (x) { return cleanClinicalText(x[1]); });
+      entries.push(fields.map(function (x) { return '• ' + x[0] + ':\n' + cleanClinicalText(x[1]); }).join('\n\n') || 'Evolução registrada sem descrição textual.');
     });
     if (!entries.length) entries.push('Atendimento realizado, sem evolução clínica textual registrada para esta data.');
     return entries.join('\n\n');
@@ -70,10 +81,10 @@
       professional: normalText(pro.name) || 'Isabela Martins',
       registry: normalText(pro.registry) || 'CREFITO 3 346081-F',
       issueDate: new Date().toLocaleDateString('pt-BR'),
-      purpose: normalText(el('is36Purpose').value),
-      context: normalText(el('is36Context').value),
-      summary: normalText(el('is36Summary').value),
-      conclusion: normalText(el('is36Conclusion').value),
+      purpose: cleanClinicalText(el('is36Purpose').value),
+      context: cleanClinicalText(el('is36Context').value),
+      summary: cleanClinicalText(el('is36Summary').value),
+      conclusion: cleanClinicalText(el('is36Conclusion').value),
       sessions: rows.map(function (r) {
         return {date: r.date, count: r.visits.length, text: sectionText(r)};
       })
@@ -156,13 +167,13 @@
     button.textContent = 'Gerando síntese…';
     try {
       var context = rows.map(function (r) { return dateLabel(r.date) + '\n' + sectionText(r); }).join('\n\n');
-      var result = await invokeIsabelaAI('report', 'Escreva SOMENTE a síntese clínica objetiva dos atendimentos selecionados, em português, sem cabeçalho, sem conclusões inventadas e sem incluir datas não informadas. Não acrescente diagnósticos, procedimentos nem resultados que não constem dos dados.', context);
-      if (activePatientId === p.id && el('reportComposerV36').classList.contains('show')) el('is36Summary').value = result;
+      var result = await invokeIsabelaAI('report', 'Elabore SOMENTE a síntese clínica dos atendimentos selecionados, em português, separada por DATA, em ordem cronológica. Para CADA data presente nos registros, use um título em linha própria: ATENDIMENTO — DD/MM/AAAA. Abaixo, escreva tópicos objetivos, cada um em linha distinta: • Avaliação; • Objetivos; • Condutas; • Resposta observada; • Observações. Inclua apenas tópicos que tenham informação registrada. Separe os dias com uma linha vazia. Não use tabelas, barras verticais, HTML, <br> nem markdown de tabela. Não acrescente diagnósticos, datas, procedimentos, sinais vitais, resultados ou conclusões que não constem dos registros. Não misture atendimentos de dias diferentes.', context);
+      if (activePatientId === p.id && el('reportComposerV36').classList.contains('show')) el('is36Summary').value = cleanClinicalText(result);
     } catch (e) {
       alert('Não foi possível gerar a síntese por IA. O preenchimento manual continua disponível. ' + (e.message || ''));
     } finally {
       button.disabled = false;
-      button.textContent = '✨ Gerar síntese com IA (opcional)';
+      button.textContent = '✨ Organizar síntese por data com IA';
     }
   }
   async function saveReport() {
@@ -220,9 +231,9 @@
     '<div class="modal is36-modal"><div class="modal-head"><h3>Relatório fisioterapêutico · <span id="is36Patient"></span></h3><button type="button" class="btn tiny" id="is36CloseTop">✕</button></div>',
     '<div class="modal-body"><p class="is36-intro">Escolha os atendimentos, revise o conteúdo e salve ou imprima em PDF. O sistema não acrescenta dados clínicos que não foram registrados.</p>',
     '<div class="is36-section"><h4>1. Escolha as datas</h4><div class="is36-cta"><button class="btn tiny" type="button" id="is36SelectAll">Selecionar todas</button><button class="btn tiny" type="button" id="is36Clear">Limpar</button><strong id="is36Count"></strong></div><div class="is36-dates" id="is36Dates"></div></div>',
-    '<div class="is36-section"><h4>2. Revise os dados do documento</h4><div class="is36-grid"><div class="wide"><label for="is36Title">Título</label><input id="is36Title"></div><div><label for="is36Purpose">Finalidade (opcional)</label><textarea id="is36Purpose" placeholder="Ex.: acompanhamento funcional"></textarea></div><div><label for="is36Context">Contexto inicial (editável)</label><textarea id="is36Context"></textarea></div><div class="wide"><label for="is36Summary">Síntese do acompanhamento</label><textarea id="is36Summary" placeholder="Resumo clínico revisado pela profissional."></textarea><button class="btn ai-dark" type="button" id="is36AI">✨ Gerar síntese com IA (opcional)</button></div><div class="wide"><label for="is36Conclusion">Conclusão e recomendações (opcional)</label><textarea id="is36Conclusion" placeholder="Preenchimento e validação da fisioterapeuta."></textarea></div></div><p class="is36-helper">O PDF também incluirá somente as evoluções das datas marcadas acima.</p></div>',
-    '<p class="is36-helper" id="is36Message"></p></div>',
-    '<div class="modal-foot is36-foot"><button class="btn" id="is36Cancel" type="button">Cancelar</button><button class="btn" id="is36Print" type="button">🖨️ Imprimir / salvar PDF</button><button class="btn primary" id="is36Save" type="button">💾 Salvar no prontuário</button></div></div>'
+    '<div class="is36-section"><h4>2. Revise os dados do documento</h4><div class="is36-grid"><div class="wide"><label for="is36Title">Título</label><input id="is36Title"></div><div><label for="is36Purpose">Finalidade (opcional)</label><textarea id="is36Purpose" placeholder="Ex.: acompanhamento funcional"></textarea></div><div><label for="is36Context">Contexto inicial (editável)</label><textarea id="is36Context"></textarea></div><div class="wide"><label for="is36Summary">Síntese do acompanhamento</label><textarea id="is36Summary" placeholder="Resumo clínico revisado pela profissional."></textarea><button class="btn ai-dark" type="button" id="is36AI">✨ Organizar síntese por data com IA</button></div><div class="wide"><label for="is36Conclusion">Conclusão e recomendações (opcional)</label><textarea id="is36Conclusion" placeholder="Preenchimento e validação da fisioterapeuta."></textarea></div></div><p class="is36-helper">O PDF também incluirá somente as evoluções das datas marcadas acima.</p></div>',
+    '<p class="is36-helper" id="is36Message"></p><p class="is36-helper">Para baixar: toque em “Salvar como PDF / imprimir” e escolha “Salvar como PDF” no navegador ou celular.</p></div>',
+    '<div class="modal-foot is36-foot"><button class="btn" id="is36Cancel" type="button">Cancelar</button><button class="btn" id="is36Print" type="button">📄 Salvar como PDF / imprimir</button><button class="btn primary" id="is36Save" type="button">💾 Salvar no prontuário</button></div></div>'
   ].join('');
   document.body.appendChild(modal);
   modal.addEventListener('click', function (e) { if (e.target === modal) closeModal('reportComposerV36'); });
