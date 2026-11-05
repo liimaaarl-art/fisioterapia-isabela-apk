@@ -2,12 +2,13 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
-const line=fs.readFileSync('index.html','utf8').split('\n').find(x=>x.startsWith('async function enterAuthenticatedApp(user)'));
+const source=fs.readFileSync('index.html','utf8');
+const line=source.slice(source.indexOf('async function enterAuthenticatedApp(user)'),source.indexOf('\nasync function logoutSupabase()'));
 assert.ok(line,'entry function exists');
 function setup({readFails=false,found=true}={}){
  const elements=new Map(), calls=[];
  const el=id=>{if(!elements.has(id))elements.set(id,{style:{},textContent:''});return elements.get(id);};
- const ctx={document:{getElementById:el},currentUser:null,cloudReady:false,storageMode:'',console:{error(){}},
+ const ctx={document:{getElementById:el},currentUser:null,cloudReady:false,storageMode:'',console:{error(){}},localStorage:{getItem(){return null}},
   async loadLocalCache(){calls.push('load-local');return true;},async loadCloudState(){calls.push('load-cloud');if(readFails)throw Error('network');return found;},
   seed(){calls.push('seed');},async saveCloudState(){calls.push('save-cloud');},async saveLocalCache(){calls.push('save-local');},updateStorage(){},render(){}};
  vm.createContext(ctx);vm.runInContext(line,ctx);return {ctx,calls,el};
