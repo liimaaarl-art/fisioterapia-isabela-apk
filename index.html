@@ -827,6 +827,26 @@ html.im-light body{background:linear-gradient(130deg,#f7f2e6,#f7f8f2 55%,#eef2e5
 @media print{.im-mobile-header,.im-sidebar-close,.im-menu-backdrop,.im-theme-switch{display:none!important}html.im-light .main,.main{padding:0}.assessment-sheet{color:#25351d}.main:before{display:none}body{background:white!important}.sidebar{display:none!important}}
 
 </style>
+<style>
+.clinical-report-modal{width:min(960px,100%)!important;max-width:960px!important}
+.clinical-report-modal .modal-body{display:grid;gap:11px;background:#f2f4f0}
+.clinical-help{margin:0;color:#46614e;font-size:12px;font-weight:700}
+.clinical-edit-label,.clinical-preview-label{font-size:12px;font-weight:800;color:#315345}
+.clinical-editor{box-sizing:border-box;width:100%;min-height:150px;padding:14px;border:1px solid #b8c9bb;border-radius:13px;background:#fff;color:#23372e;font:14px/1.6 Inter,system-ui,sans-serif;resize:vertical}
+.clinical-error{background:#fff4ee;border:1px solid #e5a78c;border-radius:10px;padding:12px;color:#89391b;font-size:12px}
+.clinical-document{max-width:780px;margin:0 auto;background:#fff;border:1px solid #d7dfd7;border-radius:14px;box-shadow:0 12px 30px rgba(21,52,34,.08);padding:34px 38px;color:#25372e;font-size:13px;line-height:1.65;overflow-wrap:anywhere}
+.clinical-document header{border-bottom:2px solid #b99b55;padding-bottom:16px;margin-bottom:20px}
+.clinical-brand{font-size:11px;font-weight:900;letter-spacing:.07em;color:#27634d}
+.clinical-document h2{font:700 23px/1.25 Georgia,serif;color:#263d30;margin:10px 0 5px}
+.clinical-document header p{margin:0;color:#66766b;font-size:11px}
+.clinical-meta{display:grid;grid-template-columns:1fr 1fr;gap:11px;padding:13px 15px;background:#f0f5f0;border-radius:10px;margin-bottom:18px}
+.clinical-meta>div{display:flex;flex-direction:column;gap:2px}.clinical-meta span{font-size:10px;font-weight:700;text-transform:uppercase;color:#637568}.clinical-meta strong{font-size:12px;color:#294b36}.clinical-meta-wide{grid-column:1/-1}
+.clinical-document section{margin:18px 0}.clinical-document h3{font-size:15px;color:#245743;border-bottom:1px solid #d9e3d8;padding-bottom:5px;margin:0 0 12px}.clinical-document h4{font-size:12px;color:#245743;margin:14px 0 5px}.clinical-document p{white-space:pre-wrap;margin:5px 0;line-height:1.68}.clinical-bullet{padding-left:12px}
+.clinical-visit{padding:10px 14px;margin:10px 0;border-left:3px solid #b99b55;background:#fafbf8;border-radius:0 8px 8px 0}.clinical-visit h4{margin:0 0 7px}.clinical-document footer{border-top:1px solid #dce5dc;padding-top:17px;margin-top:25px;font-size:11px}.clinical-document footer p{color:#69796e;font-size:10px}
+.clinical-entry .entry-head{align-items:flex-start}.clinical-entry-actions{display:flex;flex-wrap:wrap;gap:6px}.clinical-entry-body{max-height:190px;overflow:hidden;color:#405448}.clinical-entry-body p{line-height:1.55;margin:4px 0}.clinical-entry-body h4{color:#34634c;margin:8px 0 4px}
+.clinical-full{margin-top:13px}.clinical-full summary{cursor:pointer;color:#245743;font-weight:800;font-size:12px;padding:8px 0}.clinical-full .clinical-document{margin:9px 0 0;box-shadow:none}
+@media(max-width:760px){.clinical-report-modal .modal-body{padding:14px!important}.clinical-document{padding:21px 16px;font-size:12px}.clinical-meta{grid-template-columns:1fr}.clinical-meta-wide{grid-column:auto}.clinical-report-modal .modal-foot .btn{flex:1 1 135px}.clinical-entry .entry-head{display:block}.clinical-entry-actions{margin-top:10px}}
+</style>
 </head><body>
 
 <div class="auth-loading" id="authLoading"><div class="auth-loading-card"><div class="auth-loading-spin"></div>Entrando com segurança…</div></div>
@@ -1593,4 +1613,7 @@ imSetupVisual();
 <script src="isabela_v31_gemini_resilience.js"></script>
 <script src="isabela_v33_appointment_reminders.js"></script>
 <script src="isabela_v34_audio.js"></script>
+<script src="pdf-lib.min.js"></script>
+<script src="fontkit.umd.min.js"></script>
+<script src="clinical_reports.js"></script>
 </body></html>
